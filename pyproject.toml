@@ -1,0 +1,8 @@
+[project]
+name = "video-transcription"
+version = "0.1.0"
+description = "Vosk-based video transcription pipeline"
+dependencies = [
+    "vosk>=0.3.45",
+]
+requires-python = ">=3.9"
