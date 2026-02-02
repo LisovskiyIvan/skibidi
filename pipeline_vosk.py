@@ -16,7 +16,16 @@ INPUT = Path("assets/videoplayback.mp4")
 OUTDIR = Path("out")
 SEG_SECONDS = 60
 LANG_HINT = "ru"
-BURN_SUBS = True  # True = прожечь в картинку, False = оставить рядом .srt без прожига
+BURN_SUBS = True  # True = прожечь в картинку, False = оставить рядом без прожига
+
+# Настройки субтитров
+SUBTITLE_FONT = "Arial"  # Шрифт (должен быть установлен в системе)
+SUBTITLE_FONTSIZE = 100  # Размер шрифта
+SUBTITLE_POS_Y = (
+    1500  # Y координата (0=верх, 960=центр, 1920=низ). 1300 = чуть ниже центра
+)
+SUBTITLE_FADE_IN = 200  # ms - плавное появление
+SUBTITLE_FADE_OUT = 200  # ms - плавное исчезновение
 # --------------------------
 
 
@@ -99,7 +108,20 @@ def extract_wav(input_mp4: Path, out_wav: Path) -> None:
     )
 
 
-def vosk_transcribe_to_srt(model: Model, wav_path: Path, srt_path: Path) -> None:
+def ass_time(t: float) -> str:
+    """Convert seconds to ASS time format: H:MM:SS.cc"""
+    ms = int(round(t * 100))
+    h = ms // 360000
+    ms %= 360000
+    m = ms // 6000
+    ms %= 6000
+    s = ms // 100
+    ms %= 100
+    return f"{h}:{m:02d}:{s:02d}.{ms:02d}"
+
+
+def vosk_transcribe_to_ass(model: Model, wav_path: Path, ass_path: Path) -> None:
+    """Transcribe audio to ASS format with custom styling and fade animations."""
     wf = wave.open(str(wav_path), "rb")
     if wf.getnchannels() != 1 or wf.getsampwidth() != 2 or wf.getframerate() != 16000:
         wf.close()
@@ -122,17 +144,14 @@ def vosk_transcribe_to_srt(model: Model, wav_path: Path, srt_path: Path) -> None
     words = []
     for r in results:
         for w in r.get("result", []):
-            # w: {"conf":..., "end":..., "start":..., "word":"..."}
             words.append(w)
 
-    # Если ничего не распознано — всё равно создадим пустой SRT
+    # Если ничего не распознано — создадим пустой ASS
     if not words:
-        srt_path.write_text("", encoding="utf-8")
+        ass_path.write_text("", encoding="utf-8")
         return
 
-    # Группировка слов в субтитры:
-    # - максимум 2 строки / ~42 символа (упрощенно)
-    # - либо пауза > 0.8s, либо длина текста > 80 символов
+    # Группировка слов в субтитры
     max_chars = 60
     max_gap = 0.8
 
@@ -149,20 +168,39 @@ def vosk_transcribe_to_srt(model: Model, wav_path: Path, srt_path: Path) -> None
             cur["end"] = w["end"]
     cues.append(cur)
 
-    # Пишем SRT
-    lines = []
-    for i, c in enumerate(cues, 1):
-        lines.append(str(i))
-        lines.append(f"{srt_time(c['start'])} --> {srt_time(c['end'])}")
-        lines.append(c["text"])
-        lines.append("")
-    srt_path.write_text("\n".join(lines), encoding="utf-8")
+    # Генерируем ASS файл с кастомным стилем
+    ass_header = f"""[Script Info]
+Title: Auto-generated subtitles
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,{SUBTITLE_FONT},{SUBTITLE_FONTSIZE},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,5,0,0,0,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+
+    # Генерируем Dialogue строки с fade анимацией и точным позиционированием
+    dialogue_lines = []
+    center_x = 1080 // 2  # Центр по ширине
+    for c in cues:
+        start = ass_time(c["start"])
+        end = ass_time(c["end"])
+        # \pos(x,y) - точная позиция, \fad() - плавное появление
+        text = f"{{\\pos({center_x},{SUBTITLE_POS_Y})\\fad({SUBTITLE_FADE_IN},{SUBTITLE_FADE_OUT})}}{c['text']}"
+        dialogue_lines.append(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{text}")
+
+    ass_content = ass_header + "\n".join(dialogue_lines)
+    ass_path.write_text(ass_content, encoding="utf-8")
 
 
-def burn_subs(input_mp4: Path, srt_path: Path, out_mp4: Path) -> None:
-    # Конвертируем в 9:16 (вертикальное видео) + прожигаем субтитры
-    # crop=ih*9/16:ih - центральный кроп для 9:16 соотношения
-    vf_filter = f"crop=ih*9/16:ih,subtitles={srt_path.as_posix()}"
+def burn_subs(input_mp4: Path, ass_path: Path, out_mp4: Path) -> None:
+    # Конвертируем в 9:16 (1080x1920) + прожигаем ASS субтитры с кастомным стилем и fade
+    # Стиль уже задан в ASS файле: шрифт Arial, размер 48, fade анимация
+    vf_filter = f"scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,ass={ass_path.as_posix()}"
     run(
         [
             FFMPEG,
@@ -186,7 +224,8 @@ def burn_subs(input_mp4: Path, srt_path: Path, out_mp4: Path) -> None:
 
 
 def convert_to_9x16(input_mp4: Path, out_mp4: Path) -> None:
-    # Конвертация в 9:16 без субтитров (центральный кроп)
+    # Конвертация в 9:16 (1080x1920) с сохранением пропорций через паддинг
+    vf_filter = "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2"
     run(
         [
             FFMPEG,
@@ -195,7 +234,7 @@ def convert_to_9x16(input_mp4: Path, out_mp4: Path) -> None:
             "-i",
             str(input_mp4),
             "-vf",
-            "crop=ih*9/16:ih",
+            vf_filter,
             "-c:a",
             "copy",
             "-c:v",
@@ -235,7 +274,7 @@ def main():
         start = idx * SEG_SECONDS
         out_mp4 = segments_dir / f"clip_{idx:02d}.mp4"
         out_wav = wav_dir / f"clip_{idx:02d}.wav"
-        out_srt = srt_dir / f"clip_{idx:02d}.srt"
+        out_ass = srt_dir / f"clip_{idx:02d}.ass"
 
         final_mp4 = (
             final_dir / f"clip_{idx:02d}_sub.mp4"
@@ -247,17 +286,17 @@ def main():
 
         extract_segment(INPUT, start, SEG_SECONDS, out_mp4)
         extract_wav(out_mp4, out_wav)
-        vosk_transcribe_to_srt(model, out_wav, out_srt)
+        vosk_transcribe_to_ass(model, out_wav, out_ass)
 
         if BURN_SUBS:
-            burn_subs(out_mp4, out_srt, final_mp4)
+            burn_subs(out_mp4, out_ass, final_mp4)
         else:
             # конвертируем в 9:16 без субтитров
             convert_to_9x16(out_mp4, final_mp4)
 
     print("Done.")
     print(f"Final videos: {final_dir}")
-    print(f"SRT files:    {srt_dir}")
+    print(f"ASS files:    {srt_dir}")
 
 
 if __name__ == "__main__":
