@@ -1,11 +1,46 @@
+import argparse
 import json
 import math
 import os
 import subprocess
+import sys
 import wave
 from pathlib import Path
+from tkinter import Tk, filedialog, messagebox
 
 from vosk import Model, KaldiRecognizer
+
+
+def select_input_file() -> Path:
+    """Open file dialog to select input video file."""
+    root = Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    file_path = filedialog.askopenfilename(
+        title="Выберите исходное видео",
+        filetypes=[
+            ("Video files", "*.mp4 *.avi *.mov *.mkv *.webm"),
+            ("All files", "*.*"),
+        ],
+    )
+    root.destroy()
+    if not file_path:
+        raise ValueError("Input file not selected")
+    return Path(file_path)
+
+
+def select_output_dir() -> Path:
+    """Open directory dialog to select output folder."""
+    root = Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    dir_path = filedialog.askdirectory(
+        title="Выберите папку для сохранения результатов"
+    )
+    root.destroy()
+    if not dir_path:
+        raise ValueError("Output directory not selected")
+    return Path(dir_path)
 
 
 # --------- CONFIG ----------
@@ -248,24 +283,82 @@ def convert_to_9x16(input_mp4: Path, out_mp4: Path) -> None:
     )
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Video Processing Pipeline with Vosk transcription",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  %(prog)s                          # Launch GUI mode
+  %(prog)s -i video.mp4 -o ./out   # CLI mode
+  %(prog)s --input video.mp4 --output ./results
+        """,
+    )
+    parser.add_argument(
+        "-i",
+        "--input",
+        type=Path,
+        help="Input video file path (CLI mode). If not provided, GUI will be used.",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        help="Output directory path (CLI mode). If not provided, GUI will be used.",
+    )
+    return parser.parse_args()
+
+
 def main():
-    if not INPUT.exists():
-        raise FileNotFoundError(f"Missing {INPUT}")
+    args = parse_args()
+
+    print("=== Video Processing Pipeline ===")
+
+    # Determine input file
+    if args.input:
+        input_file = args.input
+        if not input_file.exists():
+            print(f"✗ Input file not found: {input_file}")
+            sys.exit(1)
+        print(f"✓ Input file: {input_file}")
+    else:
+        print("\nШаг 1: Выбор исходного видео...")
+        try:
+            input_file = select_input_file()
+            print(f"✓ Выбран файл: {input_file}")
+        except ValueError as e:
+            print(f"✗ {e}")
+            sys.exit(1)
+
+    # Determine output directory
+    if args.output:
+        output_dir = args.output
+        print(f"✓ Output directory: {output_dir}")
+    else:
+        print("\nШаг 2: Выбор папки для результатов...")
+        try:
+            output_dir = select_output_dir()
+            print(f"✓ Папка вывода: {output_dir}")
+        except ValueError as e:
+            print(f"✗ {e}")
+            sys.exit(1)
+
     if not MODEL_DIR.exists():
         raise FileNotFoundError(f"Missing model dir: {MODEL_DIR}")
 
-    OUTDIR.mkdir(parents=True, exist_ok=True)
-    segments_dir = OUTDIR / "segments"
-    wav_dir = OUTDIR / "wav"
-    srt_dir = OUTDIR / "srt"
-    final_dir = OUTDIR / "final"
+    outdir = output_dir
+    outdir.mkdir(parents=True, exist_ok=True)
+    segments_dir = outdir / "segments"
+    wav_dir = outdir / "wav"
+    srt_dir = outdir / "srt"
+    final_dir = outdir / "final"
     for d in (segments_dir, wav_dir, srt_dir, final_dir):
         d.mkdir(parents=True, exist_ok=True)
 
-    duration = get_duration_sec(INPUT)
+    duration = get_duration_sec(input_file)
     n = int(math.ceil(duration / SEG_SECONDS))
 
-    print(f"Duration: {duration:.2f}s => segments: {n}")
+    print(f"\nDuration: {duration:.2f}s => segments: {n}")
 
     print("Loading Vosk model...")
     model = Model(str(MODEL_DIR))
@@ -284,7 +377,7 @@ def main():
 
         print(f"[{idx + 1}/{n}] segment {start}-{start + SEG_SECONDS}s")
 
-        extract_segment(INPUT, start, SEG_SECONDS, out_mp4)
+        extract_segment(input_file, start, SEG_SECONDS, out_mp4)
         extract_wav(out_mp4, out_wav)
         vosk_transcribe_to_ass(model, out_wav, out_ass)
 
@@ -294,9 +387,11 @@ def main():
             # конвертируем в 9:16 без субтитров
             convert_to_9x16(out_mp4, final_mp4)
 
-    print("Done.")
+    print("\n" + "=" * 50)
+    print("Done!")
     print(f"Final videos: {final_dir}")
     print(f"ASS files:    {srt_dir}")
+    print("=" * 50)
 
 
 if __name__ == "__main__":
