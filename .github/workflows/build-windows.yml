@@ -166,13 +166,18 @@ jobs:
       
     - name: Create distribution archive
       run: |
-        Compress-Archive -Path "dist/VideoProcessor/*" -DestinationPath "VideoProcessor-Windows.zip"
+        # Create directory structure for distribution
+        New-Item -ItemType Directory -Force -Path "VideoProcessor"
+        Copy-Item "dist/VideoProcessor.exe" "VideoProcessor/"
+        # Copy additional files if needed
+        Compress-Archive -Path "VideoProcessor" -DestinationPath "VideoProcessor-Windows.zip" -Force
         
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: VideoProcessor-Windows
-        path: dist/VideoProcessor/
+        path: |
+          dist/VideoProcessor.exe
         retention-days: 30
         
     - name: Upload release asset (on tag)
