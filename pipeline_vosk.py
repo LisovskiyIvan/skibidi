@@ -11,6 +11,13 @@ from tkinter import Tk, filedialog, messagebox
 from vosk import Model, KaldiRecognizer
 
 
+def get_resource_path(relative_path: str) -> str:
+    """Get path to resource, works for dev and PyInstaller."""
+    # _MEIPASS is set by PyInstaller when running from exe
+    base_path = getattr(sys, "_MEIPASS", os.path.abspath("."))  # type: ignore
+    return os.path.join(base_path, relative_path)
+
+
 def select_input_file() -> Path:
     """Open file dialog to select input video file."""
     root = Tk()
@@ -44,9 +51,22 @@ def select_output_dir() -> Path:
 
 
 # --------- CONFIG ----------
-FFMPEG = "ffmpeg"
-FFPROBE = "ffprobe"
-MODEL_DIR = Path("vosk-model-small-ru-0.22")  # <-- путь к распакованной RU модели
+# Check if running from PyInstaller executable
+IS_BUNDLED = hasattr(sys, "_MEIPASS")  # type: ignore
+
+if IS_BUNDLED:
+    # When running from exe, use bundled resources
+    FFMPEG = get_resource_path("ffmpeg.exe")
+    FFPROBE = get_resource_path("ffprobe.exe")
+    MODEL_DIR = Path(get_resource_path("vosk-model-small-ru-0.22"))
+    SUBTITLE_FONT = get_resource_path("assets/oswald/static/Oswald-Bold.ttf")
+else:
+    # Development mode - use system ffmpeg and local paths
+    FFMPEG = "ffmpeg"
+    FFPROBE = "ffprobe" 
+    MODEL_DIR = Path("vosk-model-small-ru-0.22")
+    SUBTITLE_FONT = "assets/oswald/static/Oswald-Bold.ttf"
+
 INPUT = Path("assets/videoplayback.mp4")
 OUTDIR = Path("out")
 SEG_SECONDS = 60
@@ -54,7 +74,6 @@ LANG_HINT = "ru"
 BURN_SUBS = True  # True = прожечь в картинку, False = оставить рядом без прожига
 
 # Настройки субтитров
-SUBTITLE_FONT = "assets/oswald/static/Oswald-Bold.ttf"  # Шрифт для субтитров
 SUBTITLE_FONTSIZE = 100  # Размер шрифта
 SUBTITLE_POS_Y = (
     1500  # Y координата (0=верх, 960=центр, 1920=низ). 1300 = чуть ниже центра

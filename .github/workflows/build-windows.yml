@@ -1,0 +1,184 @@
+name: Build Windows Executable
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:  # Allows manual trigger
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyinstaller vosk
+        
+    - name: Download FFmpeg
+      run: |
+        $url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+        Invoke-WebRequest -Uri $url -OutFile "ffmpeg.zip"
+        Expand-Archive -Path "ffmpeg.zip" -DestinationPath "."
+        $ffmpegDir = Get-ChildItem -Directory -Filter "ffmpeg-*" | Select-Object -First 1
+        New-Item -ItemType Directory -Force -Path "build_windows/ffmpeg"
+        Copy-Item "$($ffmpegDir.FullName)/bin/ffmpeg.exe" "build_windows/ffmpeg/"
+        Copy-Item "$($ffmpegDir.FullName)/bin/ffprobe.exe" "build_windows/ffmpeg/"
+        Remove-Item "ffmpeg.zip" -Force
+        Remove-Item $ffmpegDir.FullName -Recurse -Force
+      shell: pwsh
+      
+    - name: Download Vosk Model
+      run: |
+        $url = "https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip"
+        Invoke-WebRequest -Uri $url -OutFile "vosk-model.zip"
+        Expand-Archive -Path "vosk-model.zip" -DestinationPath "build_windows/"
+        Remove-Item "vosk-model.zip" -Force
+      shell: pwsh
+      
+    - name: Download Oswald Font
+      run: |
+        $url = "https://github.com/googlefonts/OswaldFont/archive/refs/heads/main.zip"
+        Invoke-WebRequest -Uri $url -OutFile "oswald.zip"
+        Expand-Archive -Path "oswald.zip" -DestinationPath "oswald_temp"
+        New-Item -ItemType Directory -Force -Path "build_windows/assets/oswald/static"
+        $fontFile = Get-ChildItem -Path "oswald_temp" -Recurse -Filter "Oswald-Bold.ttf" | Where-Object { $_.FullName -like "*static*" } | Select-Object -First 1
+        if ($fontFile) {
+          Copy-Item $fontFile.FullName "build_windows/assets/oswald/static/"
+          Write-Host "Copied font: $($fontFile.FullName)"
+        } else {
+          Write-Host "Font not found, creating placeholder"
+          New-Item -ItemType File -Path "build_windows/assets/oswald/static/Oswald-Bold.ttf"
+        }
+        Remove-Item "oswald.zip" -Force
+        Remove-Item "oswald_temp" -Recurse -Force
+      shell: pwsh
+      
+    - name: Patch script for executable
+      run: |
+        @'
+        import sys
+        import os
+        
+        def get_resource_path(relative_path):
+            if hasattr(sys, '_MEIPASS'):
+                base_path = sys._MEIPASS
+            else:
+                base_path = os.path.abspath(".")
+            return os.path.join(base_path, relative_path)
+        
+        if hasattr(sys, '_MEIPASS'):
+            FFMPEG = get_resource_path("ffmpeg.exe")
+            FFPROBE = get_resource_path("ffprobe.exe")
+            MODEL_DIR = __import__('pathlib').Path(get_resource_path("vosk-model-small-ru-0.22"))
+            globals()['SUBTITLE_FONT'] = get_resource_path("assets/oswald/static/Oswald-Bold.ttf")
+        '@ | Out-File -FilePath "build_patch.py" -Encoding utf8
+        
+        # Read original script
+        $content = Get-Content "pipeline_vosk.py" -Raw
+        
+        # Insert patch after imports
+        $patch = Get-Content "build_patch.py" -Raw
+        $insertAfter = "from vosk import Model, KaldiRecognizer"
+        $content = $content -replace $insertAfter, "$insertAfter`n`n$patch"
+        
+        # Update SUBTITLE_FONT line
+        $content = $content -replace 'SUBTITLE_FONT = "assets/oswald/static/Oswald-Bold\.tf"', 'SUBTITLE_FONT = get_resource_path("assets/oswald/static/Oswald-Bold.ttf")'
+        
+        # Write modified script
+        $content | Out-File -FilePath "pipeline_vosk_build.py" -Encoding utf8
+        
+        Write-Host "Created patched script: pipeline_vosk_build.py"
+      shell: pwsh
+      
+    - name: Create PyInstaller spec
+      run: |
+        @"
+        # -*- mode: python ; coding: utf-8 -*-
+        import sys
+        sys.setrecursionlimit(5000)
+        
+        block_cipher = None
+        
+        added_files = [
+            ('build_windows/ffmpeg/ffmpeg.exe', '.'),
+            ('build_windows/ffmpeg/ffprobe.exe', '.'),
+            ('build_windows/vosk-model-small-ru-0.22', 'vosk-model-small-ru-0.22'),
+            ('build_windows/assets/oswald/static', 'assets/oswald/static'),
+        ]
+        
+        a = Analysis(
+            ['pipeline_vosk_build.py'],
+            pathex=[],
+            binaries=[],
+            datas=added_files,
+            hiddenimports=['vosk', 'tkinter', 'wave', 'json', 'math'],
+            hookspath=[],
+            hooksconfig={},
+            runtime_hooks=[],
+            excludes=[],
+            win_no_prefer_redirects=False,
+            win_private_assemblies=False,
+            cipher=block_cipher,
+            noarchive=False,
+        )
+        
+        pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+        
+        exe = EXE(
+            pyz,
+            a.scripts,
+            a.binaries,
+            a.zipfiles,
+            a.datas,
+            [],
+            name='VideoProcessor',
+            debug=False,
+            bootloader_ignore_signals=False,
+            strip=False,
+            upx=True,
+            upx_exclude=[],
+            runtime_tmpdir=None,
+            console=True,
+            disable_windowed_traceback=False,
+            argv_emulation=False,
+            target_arch=None,
+            codesign_identity=None,
+            entitlements_file=None,
+        )
+        "@ | Out-File -FilePath "VideoProcessor.spec" -Encoding utf8
+      shell: pwsh
+      
+    - name: Build executable
+      run: |
+        pyinstaller --clean --distpath ./dist VideoProcessor.spec
+      
+    - name: Create distribution archive
+      run: |
+        Compress-Archive -Path "dist/VideoProcessor/*" -DestinationPath "VideoProcessor-Windows.zip"
+        
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: VideoProcessor-Windows
+        path: dist/VideoProcessor/
+        retention-days: 30
+        
+    - name: Upload release asset (on tag)
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: VideoProcessor-Windows.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
