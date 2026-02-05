@@ -19,7 +19,7 @@ LANG_HINT = "ru"
 BURN_SUBS = True  # True = прожечь в картинку, False = оставить рядом без прожига
 
 # Настройки субтитров
-SUBTITLE_FONT = "Arial"  # Шрифт (должен быть установлен в системе)
+SUBTITLE_FONT = "assets/oswald/static/Oswald-Bold.ttf"  # Шрифт для субтитров
 SUBTITLE_FONTSIZE = 100  # Размер шрифта
 SUBTITLE_POS_Y = (
     1500  # Y координата (0=верх, 960=центр, 1920=низ). 1300 = чуть ниже центра
