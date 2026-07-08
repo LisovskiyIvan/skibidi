@@ -49,8 +49,8 @@ if TKINTER_AVAILABLE:
         def __init__(self, root: tk.Tk) -> None:
             self.root = root
             self.root.title("Video Processor")
-            self.root.geometry("600")
-            self.root.minsize(500, 400)
+            self.root.geometry("900x700")
+            self.root.minsize(800, 600)
 
             self._build_widgets()
 
@@ -98,13 +98,67 @@ if TKINTER_AVAILABLE:
             self.pos_y_var = tk.IntVar(value=1500)
             ttk.Spinbox(frame, from_=0, to=1920, textvariable=self.pos_y_var, width=10).grid(row=7, column=1, sticky=tk.W, **padding)
 
+            # Fingerprint / editing options
+            edit_frame = ttk.LabelFrame(frame, text="Fingerprint evasion / editing", padding=10)
+            edit_frame.grid(row=8, column=0, columnspan=3, sticky=tk.EW, pady=10)
+
+            self.mirror_var = tk.BooleanVar(value=True)
+            ttk.Checkbutton(edit_frame, text="Mirror horizontally", variable=self.mirror_var).grid(row=0, column=0, sticky=tk.W, **padding)
+
+            ttk.Label(edit_frame, text="Speed:").grid(row=1, column=0, sticky=tk.W, **padding)
+            self.speed_var = tk.StringVar(value="0.95-1.05")
+            ttk.Entry(edit_frame, textvariable=self.speed_var, width=20).grid(row=1, column=1, sticky=tk.W, **padding)
+            ttk.Label(edit_frame, text="e.g. 1.0 or 0.95-1.05").grid(row=1, column=2, sticky=tk.W, **padding)
+
+            ttk.Label(edit_frame, text="Brightness:").grid(row=2, column=0, sticky=tk.W, **padding)
+            self.brightness_var = tk.StringVar()
+            ttk.Entry(edit_frame, textvariable=self.brightness_var, width=10).grid(row=2, column=1, sticky=tk.W, **padding)
+
+            ttk.Label(edit_frame, text="Contrast:").grid(row=3, column=0, sticky=tk.W, **padding)
+            self.contrast_var = tk.StringVar()
+            ttk.Entry(edit_frame, textvariable=self.contrast_var, width=10).grid(row=3, column=1, sticky=tk.W, **padding)
+
+            ttk.Label(edit_frame, text="Saturation:").grid(row=4, column=0, sticky=tk.W, **padding)
+            self.saturation_var = tk.StringVar()
+            ttk.Entry(edit_frame, textvariable=self.saturation_var, width=10).grid(row=4, column=1, sticky=tk.W, **padding)
+
+            ttk.Label(edit_frame, text="Gamma:").grid(row=5, column=0, sticky=tk.W, **padding)
+            self.gamma_var = tk.StringVar()
+            ttk.Entry(edit_frame, textvariable=self.gamma_var, width=10).grid(row=5, column=1, sticky=tk.W, **padding)
+
+            ttk.Label(edit_frame, text="Hue:").grid(row=6, column=0, sticky=tk.W, **padding)
+            self.hue_var = tk.StringVar()
+            ttk.Entry(edit_frame, textvariable=self.hue_var, width=10).grid(row=6, column=1, sticky=tk.W, **padding)
+
+            self.sharpness_var = tk.BooleanVar(value=False)
+            ttk.Checkbutton(edit_frame, text="Sharpen", variable=self.sharpness_var).grid(row=7, column=0, sticky=tk.W, **padding)
+
+            ttk.Label(edit_frame, text="Noise:").grid(row=8, column=0, sticky=tk.W, **padding)
+            self.noise_var = tk.StringVar(value="0")
+            ttk.Entry(edit_frame, textvariable=self.noise_var, width=10).grid(row=8, column=1, sticky=tk.W, **padding)
+
+            ttk.Label(edit_frame, text="Overlay text:").grid(row=9, column=0, sticky=tk.W, **padding)
+            self.overlay_text_var = tk.StringVar()
+            ttk.Entry(edit_frame, textvariable=self.overlay_text_var, width=40).grid(row=9, column=1, columnspan=2, sticky=tk.W, **padding)
+
+            ttk.Label(edit_frame, text="Background audio:").grid(row=10, column=0, sticky=tk.W, **padding)
+            self.bg_audio_var = tk.StringVar()
+            ttk.Entry(edit_frame, textvariable=self.bg_audio_var, width=40).grid(row=10, column=1, sticky=tk.W, **padding)
+            ttk.Button(edit_frame, text="Browse", command=self._browse_bg_audio).grid(row=10, column=2, sticky=tk.W, **padding)
+
+            ttk.Label(edit_frame, text="BG volume:").grid(row=11, column=0, sticky=tk.W, **padding)
+            self.bg_volume_var = tk.StringVar(value="0.3")
+            ttk.Entry(edit_frame, textvariable=self.bg_volume_var, width=10).grid(row=11, column=1, sticky=tk.W, **padding)
+
+            edit_frame.columnconfigure(1, weight=1)
+
             # Run button
             self.run_button = ttk.Button(frame, text="Run", command=self._run)
-            self.run_button.grid(row=8, column=0, columnspan=3, pady=15)
+            self.run_button.grid(row=9, column=0, columnspan=3, pady=15)
 
             # Progress
             self.progress_var = tk.StringVar(value="Ready")
-            ttk.Label(frame, textvariable=self.progress_var, wraplength=550).grid(row=9, column=0, columnspan=3, sticky=tk.W, **padding)
+            ttk.Label(frame, textvariable=self.progress_var, wraplength=850).grid(row=10, column=0, columnspan=3, sticky=tk.W, **padding)
 
             frame.columnconfigure(1, weight=1)
 
@@ -123,6 +177,15 @@ if TKINTER_AVAILABLE:
             if path:
                 self.model_var.set(path)
 
+        def _browse_bg_audio(self) -> None:
+            path = filedialog.askopenfilename(filetypes=[("Audio files", "*.mp3 *.wav *.aac *.ogg *.m4a"), ("All files", "*.*")])
+            if path:
+                self.bg_audio_var.set(path)
+
+        def _float_or_none(self, var: tk.StringVar) -> float | None:
+            value = var.get().strip()
+            return float(value) if value else None
+
         def _make_config(self) -> PipelineConfig:
             return PipelineConfig(
                 input=Path(self.input_var.get()),
@@ -134,6 +197,18 @@ if TKINTER_AVAILABLE:
                 subtitle_font_path=get_default_font_path(),
                 subtitle_fontsize=self.font_size_var.get(),
                 subtitle_pos_y=self.pos_y_var.get(),
+                mirror=self.mirror_var.get(),
+                speed=self.speed_var.get(),
+                brightness=self._float_or_none(self.brightness_var),
+                contrast=self._float_or_none(self.contrast_var),
+                saturation=self._float_or_none(self.saturation_var),
+                gamma=self._float_or_none(self.gamma_var),
+                hue=self._float_or_none(self.hue_var),
+                sharpness=self.sharpness_var.get(),
+                noise=int(self.noise_var.get() or 0),
+                overlay_text=self.overlay_text_var.get() or None,
+                background_audio=Path(self.bg_audio_var.get()) if self.bg_audio_var.get() else None,
+                background_audio_volume=float(self.bg_volume_var.get() or 0.3),
             )
 
         def _progress(self, step: Step, current: int, total: int, message: str) -> None:

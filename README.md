@@ -165,6 +165,27 @@ run_pipeline(config, on_progress)
 | `--pos-y` | Позиция по Y | `1500` |
 | `--fade-in` | Появление, мс | `200` |
 | `--fade-out` | Исчезновение, мс | `200` |
+| `--mirror` / `--no-mirror` | Зеркальное отражение | `True` |
+| `--speed` | Скорость (`1.0` или `0.95-1.05`) | `0.95-1.05` |
+| `--brightness` | Яркость (FFmpeg eq) | — |
+| `--contrast` | Контраст (FFmpeg eq) | — |
+| `--saturation` | Насыщенность (FFmpeg eq) | — |
+| `--gamma` | Гамма (FFmpeg eq) | — |
+| `--hue` | Оттенок (FFmpeg eq) | — |
+| `--sharpness` | Лёгкая резкость | `False` |
+| `--noise` | Шум (0 = выкл) | `0` |
+| `--overlay-text` | Текстовый оверлей | — |
+| `--bg-audio` | Фоновое аудио | — |
+| `--bg-volume` | Громкость фона | `0.3` |
+
+### Пример CLI с эффектами
+
+```bash
+python -m video_processor -i video.mp4 -o ./out \
+  --mirror --speed 0.95-1.05 \
+  --brightness 0.05 --contrast 1.05 --noise 5 \
+  --bg-audio music.mp3 --bg-volume 0.3
+```
 
 ## Зависимости
 

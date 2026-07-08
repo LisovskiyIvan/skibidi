@@ -35,6 +35,20 @@ class PipelineConfig:
     fade_in_ms: int = 200
     fade_out_ms: int = 200
 
+    # Fingerprint-evasion / editing options
+    mirror: bool = True
+    speed: str = "0.95-1.05"
+    brightness: float | None = None
+    contrast: float | None = None
+    saturation: float | None = None
+    gamma: float | None = None
+    hue: float | None = None
+    sharpness: bool = False
+    noise: int = 0
+    overlay_text: str | None = None
+    background_audio: Path | None = None
+    background_audio_volume: float = 0.3
+
     ffmpeg: Path | str = field(default_factory=get_ffmpeg_path)
     ffprobe: Path | str = field(default_factory=get_ffprobe_path)
 
@@ -51,6 +65,18 @@ class PipelineConfig:
             "subtitle_pos_y": self.subtitle_pos_y,
             "fade_in_ms": self.fade_in_ms,
             "fade_out_ms": self.fade_out_ms,
+            "mirror": self.mirror,
+            "speed": self.speed,
+            "brightness": self.brightness,
+            "contrast": self.contrast,
+            "saturation": self.saturation,
+            "gamma": self.gamma,
+            "hue": self.hue,
+            "sharpness": self.sharpness,
+            "noise": self.noise,
+            "overlay_text": self.overlay_text,
+            "background_audio": str(self.background_audio) if self.background_audio else None,
+            "background_audio_volume": self.background_audio_volume,
             "ffmpeg": str(self.ffmpeg),
             "ffprobe": str(self.ffprobe),
         }

@@ -92,6 +92,79 @@ def build_parser() -> argparse.ArgumentParser:
         default=200,
         help="Subtitle fade-out duration in milliseconds (default: 200).",
     )
+    # Editing / fingerprint-evasion options
+    parser.add_argument(
+        "--mirror",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Mirror the video horizontally (default: true).",
+    )
+    parser.add_argument(
+        "--speed",
+        type=str,
+        default="0.95-1.05",
+        help="Speed factor or range, e.g. 1.0 or 0.95-1.05 (default: 0.95-1.05).",
+    )
+    parser.add_argument(
+        "--brightness",
+        type=float,
+        default=None,
+        help="Brightness adjustment (FFmpeg eq).",
+    )
+    parser.add_argument(
+        "--contrast",
+        type=float,
+        default=None,
+        help="Contrast adjustment (FFmpeg eq).",
+    )
+    parser.add_argument(
+        "--saturation",
+        type=float,
+        default=None,
+        help="Saturation adjustment (FFmpeg eq).",
+    )
+    parser.add_argument(
+        "--gamma",
+        type=float,
+        default=None,
+        help="Gamma adjustment (FFmpeg eq).",
+    )
+    parser.add_argument(
+        "--hue",
+        type=float,
+        default=None,
+        help="Hue adjustment (FFmpeg eq).",
+    )
+    parser.add_argument(
+        "--sharpness",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Apply subtle sharpening (default: false).",
+    )
+    parser.add_argument(
+        "--noise",
+        type=int,
+        default=0,
+        help="Adversarial noise intensity (0 = off).",
+    )
+    parser.add_argument(
+        "--overlay-text",
+        type=str,
+        default=None,
+        help="Text overlay drawn at the bottom center.",
+    )
+    parser.add_argument(
+        "--bg-audio",
+        type=Path,
+        default=None,
+        help="Optional background audio file mixed with the original audio.",
+    )
+    parser.add_argument(
+        "--bg-volume",
+        type=float,
+        default=0.3,
+        help="Background audio volume (default: 0.3).",
+    )
     return parser
 
 
@@ -108,6 +181,18 @@ def config_from_args(args: argparse.Namespace) -> PipelineConfig:
         subtitle_pos_y=args.pos_y,
         fade_in_ms=args.fade_in,
         fade_out_ms=args.fade_out,
+        mirror=args.mirror,
+        speed=args.speed,
+        brightness=args.brightness,
+        contrast=args.contrast,
+        saturation=args.saturation,
+        gamma=args.gamma,
+        hue=args.hue,
+        sharpness=args.sharpness,
+        noise=args.noise,
+        overlay_text=args.overlay_text,
+        background_audio=args.bg_audio,
+        background_audio_volume=args.bg_volume,
     )
 
 

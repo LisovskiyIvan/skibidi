@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 import subprocess
 from pathlib import Path
 
@@ -90,26 +91,130 @@ def _nine_by_sixteen_filter() -> str:
     )
 
 
-def convert_to_9x16(config: PipelineConfig, input_mp4: Path, out_mp4: Path) -> None:
-    """Convert a video to 9:16 without burning subtitles."""
+def _resolve_speed(speed_value: str) -> float:
+    """Parse a speed value or a range like '0.95-1.05' and return a concrete speed."""
+    value = speed_value.strip()
+    if "-" in value:
+        lo_str, hi_str = value.split("-", 1)
+        return random.uniform(float(lo_str), float(hi_str))
+    return float(value)
+
+
+def _build_video_filter(config: PipelineConfig, ass_path: Path | None, speed: float) -> str:
+    """Build the video filter chain including 9:16, subtitles, and edits."""
+    filters = [_nine_by_sixteen_filter()]
+
+    if config.mirror:
+        filters.append("hflip")
+
+    if ass_path is not None:
+        sub = f"subtitles={ass_path.as_posix()}"
+        if config.subtitle_font_path and config.subtitle_font_path.exists():
+            font_dir = config.subtitle_font_path.parent.as_posix()
+            sub = f"{sub}:fontsdir={font_dir}"
+        filters.append(sub)
+
+    eq_params = []
+    if config.brightness is not None:
+        eq_params.append(f"brightness={config.brightness}")
+    if config.contrast is not None:
+        eq_params.append(f"contrast={config.contrast}")
+    if config.saturation is not None:
+        eq_params.append(f"saturation={config.saturation}")
+    if config.gamma is not None:
+        eq_params.append(f"gamma={config.gamma}")
+    if config.hue is not None:
+        eq_params.append(f"hue={config.hue}")
+    if eq_params:
+        filters.append(f"eq={':'.join(eq_params)}")
+
+    if config.sharpness:
+        filters.append("unsharp")
+
+    if config.noise:
+        filters.append(f"noise=alls={config.noise}:allf=t+u")
+
+    if config.overlay_text:
+        # Basic escaping for single quotes in drawtext
+        text = config.overlay_text.replace("'", "\\'")
+        filters.append(
+            "drawtext=text='"
+            f"{text}"
+            ":x=(w-text_w)/2:y=h-text_h-50:fontsize=24:fontcolor=white"
+        )
+
+    if speed != 1.0:
+        filters.append(f"setpts=PTS/{speed}")
+
+    return ",".join(filters)
+
+
+def _build_ffmpeg_cmd(
+    config: PipelineConfig,
+    input_path: Path,
+    out_path: Path,
+    ass_path: Path | None,
+) -> list[str]:
+    """Build an FFmpeg command that applies 9:16 conversion, subtitles and edits."""
+    speed = _resolve_speed(config.speed)
+    has_background_audio = config.background_audio is not None
+    needs_complex = has_background_audio or speed != 1.0
+    video_filter = _build_video_filter(config, ass_path, speed)
+
     cmd = [
         str(config.ffmpeg),
         "-hide_banner",
         "-y",
         "-i",
-        str(input_mp4),
-        "-vf",
-        _nine_by_sixteen_filter(),
-        "-c:a",
-        "copy",
+        str(input_path),
+    ]
+    if has_background_audio:
+        # Loop the music so it covers the whole video.
+        cmd.extend(["-stream_loop", "-1", "-i", str(config.background_audio)])
+
+    if needs_complex:
+        audio_chains: list[str] = []
+        if has_background_audio:
+            bg_vol = config.background_audio_volume
+            if speed != 1.0:
+                audio_chains.append(f"[0:a]atempo={speed}[a_sped]")
+                audio_chains.append("[a_sped]volume=1.0[orig]")
+            else:
+                audio_chains.append("[0:a]volume=1.0[orig]")
+            audio_chains.append(f"[1:a]volume={bg_vol}[bg]")
+            audio_chains.append(
+                "[orig][bg]amix=inputs=2:duration=first:dropout_transition=2[a]"
+            )
+        else:
+            audio_chains.append(f"[0:a]atempo={speed}[a]")
+
+        filter_complex = f"{';'.join(audio_chains)};[0:v]{video_filter}[v]"
+        cmd.extend([
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            "[v]",
+            "-map",
+            "[a]",
+        ])
+    else:
+        cmd.extend(["-vf", video_filter, "-c:a", "copy"])
+
+    cmd.extend([
         "-c:v",
         "libx264",
         "-preset",
         "fast",
         "-crf",
         "23",
-        str(out_mp4),
-    ]
+        str(out_path),
+    ])
+    return cmd
+
+
+def convert_to_9x16(config: PipelineConfig, input_mp4: Path, out_mp4: Path) -> None:
+    """Convert a video to 9:16, optionally applying edits and background audio."""
+    cmd = _build_ffmpeg_cmd(config, input_mp4, out_mp4, ass_path=None)
     run_command(config, cmd)
 
 
@@ -119,32 +224,6 @@ def burn_subs(
     ass_path: Path,
     out_mp4: Path,
 ) -> None:
-    """Convert to 9:16 and burn an ASS subtitle file into the result."""
-    # First scale/pad, then render subtitles so the ASS coordinates match the
-    # 1080x1920 output frame.
-    video_filter = f"{_nine_by_sixteen_filter()},subtitles={ass_path.as_posix()}"
-
-    # Let libass find bundled fonts by pointing it at the font directory.
-    if config.subtitle_font_path and config.subtitle_font_path.exists():
-        font_dir = config.subtitle_font_path.parent.as_posix()
-        video_filter = f"{video_filter}:fontsdir={font_dir}"
-
-    cmd = [
-        str(config.ffmpeg),
-        "-hide_banner",
-        "-y",
-        "-i",
-        str(input_mp4),
-        "-vf",
-        video_filter,
-        "-c:a",
-        "copy",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "fast",
-        "-crf",
-        "23",
-        str(out_mp4),
-    ]
+    """Convert to 9:16, burn an ASS subtitle file and apply edits/audio."""
+    cmd = _build_ffmpeg_cmd(config, input_mp4, out_mp4, ass_path=ass_path)
     run_command(config, cmd)
