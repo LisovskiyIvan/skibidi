@@ -11,9 +11,54 @@ dependencies = [
     "vosk>=0.3.45",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "mypy>=1.10",
+    "ruff>=0.5",
+]
+
 [project.scripts]
 video-processor = "video_processor.__main__:main"
 
 [tool.setuptools]
 packages = ["video_processor"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "W"]
+# Long pre-existing ffprobe/ffmpeg command literals, and argparse one-per-line
+# CLI blocks read better as a single long line.
+ignore = ["E501"]
+
+[tool.mypy]
+# 3.10 is the lowest target supported by the mypy 2.x toolchain; the package
+# still runs on 3.9 thanks to `from __future__ import annotations` everywhere.
+python_version = "3.10"
+# Run bare `mypy` (no path args): config-driven discovery honours `exclude`,
+# whereas passing a directory on the command line bypasses it.
+files = ["video_processor", "tests"]
+strict = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+# The Tkinter stubs (ttk.grid **kwargs, lambda callbacks) are extremely noisy and
+# the GUI is a thin adapter over the typed core, so these non-domain error codes
+# are silenced for it. All real domain logic is fully checked.
+[[tool.mypy.overrides]]
+module = "video_processor.ui"
+disable_error_code = ["arg-type", "misc", "type-arg"]
+
+[[tool.mypy.overrides]]
+module = "vosk"
+# vosk ships no py.typed / stubs.
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
 

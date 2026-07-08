@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import wave
 from pathlib import Path
-from typing import TypedDict
+from typing import Any, TypedDict
 
 from vosk import KaldiRecognizer, Model
 
@@ -43,7 +43,7 @@ def transcribe_words(model: Model, wav_path: Path) -> list[WordInfo]:
         recognizer = KaldiRecognizer(model, wf.getframerate())
         recognizer.SetWords(True)
 
-        results: list[dict] = []
+        results: list[dict[str, Any]] = []
         while True:
             data = wf.readframes(4000)
             if not data:

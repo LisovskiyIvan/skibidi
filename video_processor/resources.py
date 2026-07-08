@@ -11,7 +11,8 @@ def _is_bundled() -> bool:
 
 
 def _bundle_root() -> Path:
-    return Path(sys._MEIPASS)
+    # ``sys._MEIPASS`` is injected by PyInstaller at runtime.
+    return Path(sys._MEIPASS)  # type: ignore[attr-defined]
 
 
 def _repo_root() -> Path:

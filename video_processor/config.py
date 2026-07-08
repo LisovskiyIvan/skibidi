@@ -38,6 +38,9 @@ class PipelineConfig:
     # Fingerprint-evasion / editing options
     mirror: bool = True
     speed: str = "0.95-1.05"
+    # When set, all randomized effects (e.g. a speed range) become reproducible.
+    # None keeps the default OS-entropy behaviour.
+    seed: int | None = None
     brightness: float | None = None
     contrast: float | None = None
     saturation: float | None = None
@@ -67,6 +70,7 @@ class PipelineConfig:
             "fade_out_ms": self.fade_out_ms,
             "mirror": self.mirror,
             "speed": self.speed,
+            "seed": self.seed,
             "brightness": self.brightness,
             "contrast": self.contrast,
             "saturation": self.saturation,

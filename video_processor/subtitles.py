@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from .config import PipelineConfig
+
+if TYPE_CHECKING:
+    from .transcribe import Cue
 
 
 def ass_time(seconds: float) -> str:
@@ -38,7 +43,7 @@ def build_ass_header(config: PipelineConfig) -> list[str]:
     ]
 
 
-def generate_ass(config: PipelineConfig, cues: list) -> str:
+def generate_ass(config: PipelineConfig, cues: list[Cue]) -> str:
     """Generate an ASS subtitle file from grouped cues."""
     lines = build_ass_header(config)
     for cue in cues:

@@ -213,8 +213,9 @@ if TKINTER_AVAILABLE:
 
         def _progress(self, step: Step, current: int, total: int, message: str) -> None:
             text = f"[{current}/{total}] {step.value}: {message}"
-            self.progress_var.set(text)
-            self.root.update_idletasks()
+            # Marshal to the Tk main thread: Tkinter is not thread-safe, and this
+            # callback is invoked from the worker thread that runs the pipeline.
+            self.root.after(0, self.progress_var.set, text)
 
         def _run(self) -> None:
             if not self.input_var.get():

@@ -2,13 +2,15 @@
 
 Скрипт для обработки видео: разбивает на сегменты, распознает речь через Vosk, добавляет субтитры и конвертирует в 9:16 формат.
 
-Проект разделён на три слоя:
+Проект разделён на три **концептуальных слоя** (все модули лежат в одном плоском
+пакете `video_processor/`):
 
-- **core** — чистая бизнес-логика (`config`, `ffmpeg`, `transcribe`, `subtitles`, `pipeline`, `resources`, `progress`).
-- **cli** — командная строка.
-- **ui** — Tkinter GUI.
+- **core** — чистая бизнес-логика (`config`, `ffmpeg`, `transcribe`, `subtitles`, `pipeline`, `resources`, `progress`, `errors`).
+- **cli** — командная строка (`cli`, `__main__`).
+- **ui** — Tkinter GUI (`ui`).
 
-Все три слоя работают поверх одного и того же ядра `core`.
+Все три слоя работают поверх одного и того же ядра `core`, а `PipelineConfig`
+(один dataclass) и протокол `ProgressCallback` связывают их между собой.
 
 ## Быстрый старт
 
@@ -87,24 +89,42 @@ python build_windows.py
 │   ├── __main__.py          # Точка входа: python -m video_processor
 │   ├── cli.py                # CLI
 │   ├── ui.py                 # Tkinter GUI
-│   ├── config.py             # Конфигурация пайплайна
+│   ├── config.py             # Конфигурация пайплайна (PipelineConfig)
 │   ├── resources.py          # Пути к ресурсам (dev / PyInstaller bundle)
-│   ├── progress.py           # Протокол прогресса
+│   ├── progress.py           # Протокол прогресса (ProgressCallback)
+│   ├── errors.py             # PipelineError
 │   ├── pipeline.py           # Оркестрация пайплайна
 │   ├── ffmpeg.py             # FFmpeg/FFprobe обёртки
 │   ├── transcribe.py         # Vosk + группировка слов
 │   └── subtitles.py          # Генерация ASS
+├── tests/                    # pytest-тесты (чистые функции + пайплайн)
 ├── build_windows.py          # Скрипт сборки для Windows
-├── requirements.txt          # Python зависимости
-├── pyproject.toml            # Метаданные и точка входа video-processor
+├── requirements.txt          # Python зависимости (runtime)
+├── pyproject.toml            # Метаданные, точка входа, конфиги ruff/mypy/pytest
 ├── setup.sh                  # Setup Linux/macOS
 ├── .github/
 │   └── workflows/
-│       └── build-windows.yml # GitHub Actions workflow
+│       ├── ci.yml            # lint (ruff) + typecheck (mypy) + tests (pytest)
+│       └── build-windows.yml # Сборка Windows exe
 ├── assets/
 │   └── oswald/              # Шрифты
 └── vosk-model-small-ru-0.22/ # Модель Vosk
 ```
+
+## Разработка
+
+Дев-тулчейн (pytest, mypy, ruff) ставится опциональной группой зависимостей:
+
+```bash
+pip install -e ".[dev]"
+# или через uv: uv pip install -e ".[dev]"
+
+ruff check .   # линтер
+mypy           # статическая типизация ядра (Tkinter-GUI исключён из-за шума stubs)
+pytest         # 45+ unit-тестов на чистые функции и оркестрацию
+```
+
+Все три проверки прогоняются в CI (`.github/workflows/ci.yml`) на каждый push/PR.
 
 ## Использование
 
@@ -167,6 +187,7 @@ run_pipeline(config, on_progress)
 | `--fade-out` | Исчезновение, мс | `200` |
 | `--mirror` / `--no-mirror` | Зеркальное отражение | `True` |
 | `--speed` | Скорость (`1.0` или `0.95-1.05`) | `0.95-1.05` |
+| `--seed` | Seed для рандомизированных эффектов (напр. `--speed`) | — |
 | `--brightness` | Яркость (FFmpeg eq) | — |
 | `--contrast` | Контраст (FFmpeg eq) | — |
 | `--saturation` | Насыщенность (FFmpeg eq) | — |
@@ -186,6 +207,19 @@ python -m video_processor -i video.mp4 -o ./out \
   --brightness 0.05 --contrast 1.05 --noise 5 \
   --bg-audio music.mp3 --bg-volume 0.3
 ```
+
+### Воспроизводимость, resume и прогресс
+
+- **`--seed N`** — фиксирует генератор случайных чисел. Все рандомизированные
+  эффекты (например, случайная скорость из диапазона `0.95-1.05`) становятся
+  детерминированными: повторный запуск на том же входе даёт тот же результат.
+  Без `--seed` используется системная энтропия (поведение по умолчанию).
+- **Resume** — если в `final/` уже лежит готовый клип (`clip_NN_sub.mp4`), сегмент
+  пропускается. Прерванный запуск можно перезапустить без переработки целых
+  сегментов: просто удалите только незавершённые клипы.
+- **Прогресс** — FFmpeg пишет построчный прогресс в stderr; пайплайн парсит
+  `out_time_ms` и сообщает процент выполнения внутри каждого сегмента (с шагом
+  5%, чтобы не засорять вывод в CLI).
 
 ## Зависимости
 

@@ -3,17 +3,67 @@
 from __future__ import annotations
 
 import random
+import re
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 
 from .config import PipelineConfig
+from .errors import PipelineError
+
+# ``out_time_ms`` from ``-progress`` is actually in microseconds (an old FFmpeg
+# naming quirk). ``out_time_us`` is the same value under a honest name.
+_OUT_TIME_RE = re.compile(r"out_time_ms=(\d+)")
 
 
-def run_command(config: PipelineConfig, cmd: list[str]) -> None:
-    """Run a subprocess and raise a clear error on failure."""
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    if proc.returncode != 0:
-        raise RuntimeError(f"Command failed:\n{' '.join(cmd)}\n\nSTDERR:\n{proc.stderr}")
+def parse_ffmpeg_seconds(line: str) -> float | None:
+    """Return processed seconds from an FFmpeg ``-progress`` line, else None."""
+    match = _OUT_TIME_RE.search(line)
+    if match is None:
+        return None
+    return int(match.group(1)) / 1_000_000
+
+
+def _failed_message(cmd: list[str], stderr: str) -> str:
+    return f"Command failed:\n{' '.join(cmd)}\n\nSTDERR:\n{stderr}"
+
+
+def run_command(
+    config: PipelineConfig,
+    cmd: list[str],
+    on_line: Callable[[str], None] | None = None,
+) -> None:
+    """Run a subprocess and raise :class:`PipelineError` on failure.
+
+    When ``on_line`` is provided, FFmpeg's stderr is streamed line by line so
+    the caller can report live progress (see :func:`parse_ffmpeg_seconds`).
+    Otherwise stderr is captured fully, as before.
+    """
+    if on_line is None:
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        if proc.returncode != 0:
+            raise PipelineError(_failed_message(cmd, proc.stderr))
+        return
+
+    process = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1
+    )
+    tail: list[str] = []
+    try:
+        assert process.stderr is not None
+        for line in process.stderr:
+            on_line(line.rstrip("\r\n"))
+            tail.append(line)
+            if len(tail) > 50:
+                tail.pop(0)
+        process.wait()
+    finally:
+        if process.stdout is not None:
+            process.stdout.close()
+        if process.stderr is not None:
+            process.stderr.close()
+    if process.returncode != 0:
+        raise PipelineError(_failed_message(cmd, "".join(tail)))
 
 
 def get_duration_sec(config: PipelineConfig, path: Path) -> float:
@@ -28,9 +78,9 @@ def get_duration_sec(config: PipelineConfig, path: Path) -> float:
         "default=noprint_wrappers=1:nokey=1",
         str(path),
     ]
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
-        raise RuntimeError(f"ffprobe failed:\n{proc.stderr}")
+        raise PipelineError(f"ffprobe failed:\n{proc.stderr}")
     return float(proc.stdout.strip())
 
 
@@ -91,12 +141,12 @@ def _nine_by_sixteen_filter() -> str:
     )
 
 
-def _resolve_speed(speed_value: str) -> float:
+def _resolve_speed(speed_value: str, rng: random.Random) -> float:
     """Parse a speed value or a range like '0.95-1.05' and return a concrete speed."""
     value = speed_value.strip()
     if "-" in value:
         lo_str, hi_str = value.split("-", 1)
-        return random.uniform(float(lo_str), float(hi_str))
+        return rng.uniform(float(lo_str), float(hi_str))
     return float(value)
 
 
@@ -154,9 +204,10 @@ def _build_ffmpeg_cmd(
     input_path: Path,
     out_path: Path,
     ass_path: Path | None,
+    rng: random.Random,
 ) -> list[str]:
     """Build an FFmpeg command that applies 9:16 conversion, subtitles and edits."""
-    speed = _resolve_speed(config.speed)
+    speed = _resolve_speed(config.speed, rng)
     has_background_audio = config.background_audio is not None
     needs_complex = has_background_audio or speed != 1.0
     video_filter = _build_video_filter(config, ass_path, speed)
@@ -200,6 +251,7 @@ def _build_ffmpeg_cmd(
     else:
         cmd.extend(["-vf", video_filter, "-c:a", "copy"])
 
+    # Structured progress key=value lines on stderr, parsed for live percent.
     cmd.extend([
         "-c:v",
         "libx264",
@@ -207,15 +259,24 @@ def _build_ffmpeg_cmd(
         "fast",
         "-crf",
         "23",
+        "-progress",
+        "pipe:2",
         str(out_path),
     ])
     return cmd
 
 
-def convert_to_9x16(config: PipelineConfig, input_mp4: Path, out_mp4: Path) -> None:
+def convert_to_9x16(
+    config: PipelineConfig,
+    input_mp4: Path,
+    out_mp4: Path,
+    *,
+    rng: random.Random | None = None,
+    on_line: Callable[[str], None] | None = None,
+) -> None:
     """Convert a video to 9:16, optionally applying edits and background audio."""
-    cmd = _build_ffmpeg_cmd(config, input_mp4, out_mp4, ass_path=None)
-    run_command(config, cmd)
+    cmd = _build_ffmpeg_cmd(config, input_mp4, out_mp4, ass_path=None, rng=rng or random.Random())
+    run_command(config, cmd, on_line=on_line)
 
 
 def burn_subs(
@@ -223,7 +284,10 @@ def burn_subs(
     input_mp4: Path,
     ass_path: Path,
     out_mp4: Path,
+    *,
+    rng: random.Random | None = None,
+    on_line: Callable[[str], None] | None = None,
 ) -> None:
     """Convert to 9:16, burn an ASS subtitle file and apply edits/audio."""
-    cmd = _build_ffmpeg_cmd(config, input_mp4, out_mp4, ass_path=ass_path)
-    run_command(config, cmd)
+    cmd = _build_ffmpeg_cmd(config, input_mp4, out_mp4, ass_path=ass_path, rng=rng or random.Random())
+    run_command(config, cmd, on_line=on_line)

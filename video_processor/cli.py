@@ -7,7 +7,8 @@ import sys
 from pathlib import Path
 
 from .config import PipelineConfig
-from .pipeline import PipelineError, run_pipeline
+from .errors import PipelineError
+from .pipeline import run_pipeline
 from .progress import ProgressCallback, Step, default_message
 from .resources import get_default_font_path, get_default_model_dir
 
@@ -106,6 +107,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Speed factor or range, e.g. 1.0 or 0.95-1.05 (default: 0.95-1.05).",
     )
     parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Seed for randomized effects such as a speed range (default: random).",
+    )
+    parser.add_argument(
         "--brightness",
         type=float,
         default=None,
@@ -183,6 +190,7 @@ def config_from_args(args: argparse.Namespace) -> PipelineConfig:
         fade_out_ms=args.fade_out,
         mirror=args.mirror,
         speed=args.speed,
+        seed=args.seed,
         brightness=args.brightness,
         contrast=args.contrast,
         saturation=args.saturation,
