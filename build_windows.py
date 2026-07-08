@@ -2,23 +2,23 @@
 # Run: python build_windows.py
 # Or use GitHub Actions (see .github/workflows/build.yml)
 
-import os
+from __future__ import annotations
+
 import shutil
 import subprocess
 import sys
-import tempfile
 import urllib.request
 import zipfile
 from pathlib import Path
 
 
-def download_file(url: str, dest: Path, desc: str):
+def download_file(url: str, dest: Path, desc: str) -> None:
     """Download file with progress."""
     print(f"Downloading {desc}...")
     print(f"  URL: {url}")
     print(f"  Dest: {dest}")
 
-    def report_hook(block_num, block_size, total_size):
+    def report_hook(block_num: int, block_size: int, total_size: int) -> None:
         downloaded = block_num * block_size
         percent = min(downloaded * 100 / total_size, 100) if total_size > 0 else 0
         sys.stdout.write(f"\r  Progress: {percent:.1f}%")
@@ -37,7 +37,7 @@ def setup_ffmpeg(build_dir: Path) -> Path:
         print("FFmpeg already exists, skipping download")
         return ffmpeg_dir
 
-    # Download ffmpeg from gyano.dev (official builds)
+    # Download ffmpeg from gyan.dev (official builds)
     url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
     zip_path = build_dir / "ffmpeg.zip"
 
@@ -136,7 +136,7 @@ def setup_fonts(build_dir: Path) -> Path:
     return fonts_dir
 
 
-def check_pyinstaller():
+def check_pyinstaller() -> bool:
     """Check if pyinstaller is installed."""
     try:
         subprocess.run(
@@ -149,7 +149,7 @@ def check_pyinstaller():
         return False
 
 
-def install_pyinstaller():
+def install_pyinstaller() -> None:
     """Install pyinstaller."""
     print("Installing PyInstaller...")
     subprocess.run([sys.executable, "-m", "pip", "install", "pyinstaller"], check=True)
@@ -164,9 +164,6 @@ def create_spec_file(
 ) -> Path:
     """Create PyInstaller spec file."""
 
-    # Calculate relative paths for the spec file
-    script_name = script_path.stem
-
     spec_content = f"""# -*- mode: python ; coding: utf-8 -*-
 
 import sys
@@ -179,10 +176,10 @@ added_files = [
     # FFmpeg binaries
     ('{ffmpeg_dir.as_posix()}/ffmpeg.exe', '.'),
     ('{ffmpeg_dir.as_posix()}/ffprobe.exe', '.'),
-    
+
     # Vosk model
     ('{model_dir.as_posix()}', 'vosk-model-small-ru-0.22'),
-    
+
     # Fonts
     ('{fonts_dir.as_posix()}', 'assets/oswald/static'),
 ]
@@ -192,7 +189,7 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=added_files,
-    hiddenimports=['vosk', 'tkinter', 'wave', 'json', 'math'],
+    hiddenimports=['vosk', 'tkinter', 'video_processor', 'video_processor.ui', 'video_processor.resources'],
     hookspath=[],
     hooksconfig={{}},
     runtime_hooks=[],
@@ -234,66 +231,7 @@ exe = EXE(
     return spec_path
 
 
-def patch_script_for_exe(script_path: Path, build_dir: Path) -> Path:
-    """Create modified version of script for exe build."""
-
-    content = script_path.read_text(encoding="utf-8")
-
-    # Add code to detect if running from exe and set paths accordingly
-    exe_patch = '''
-# --- AUTO-INJECTED BY BUILD SCRIPT ---
-import sys
-import os
-
-def get_resource_path(relative_path):
-    """Get path to resource, works for dev and PyInstaller."""
-    if hasattr(sys, '_MEIPASS'):
-        # PyInstaller creates a temp folder and stores path in _MEIPASS
-        base_path = sys._MEIPASS
-    else:
-        base_path = os.path.abspath(".")
-    return os.path.join(base_path, relative_path)
-
-# Set ffmpeg paths for bundled exe
-if hasattr(sys, '_MEIPASS'):
-    FFMPEG = get_resource_path("ffmpeg.exe")
-    FFPROBE = get_resource_path("ffprobe.exe")
-    MODEL_DIR = Path(get_resource_path("vosk-model-small-ru-0.22"))
-    SUBTITLE_FONT = get_resource_path("assets/oswald/static/Oswald-Bold.ttf")
-else:
-    # Keep original values for development mode
-    pass
-
-# --- END AUTO-INJECTED ---
-
-'''
-
-    # Find where to insert (after imports, before CONFIG)
-    lines = content.split("\n")
-    import_end = 0
-    for i, line in enumerate(lines):
-        if line.startswith("from ") or line.startswith("import "):
-            import_end = i + 1
-
-    # Insert the patch
-    lines.insert(import_end, exe_patch)
-
-    # Modify CONFIG section to use get_resource_path for exe
-    new_lines = []
-    for line in lines:
-        if "SUBTITLE_FONT = " in line and "get_resource_path" not in line:
-            line = 'SUBTITLE_FONT = get_resource_path("assets/oswald/static/Oswald-Bold.ttf")'
-        new_lines.append(line)
-
-    modified_content = "\n".join(new_lines)
-
-    # Write modified script
-    modified_path = build_dir / "pipeline_vosk_build.py"
-    modified_path.write_text(modified_content, encoding="utf-8")
-    return modified_path
-
-
-def build_exe(spec_path: Path, dist_dir: Path):
+def build_exe(spec_path: Path, dist_dir: Path) -> None:
     """Run PyInstaller build."""
     print("\n" + "=" * 60)
     print("Building executable...")
@@ -320,7 +258,7 @@ def build_exe(spec_path: Path, dist_dir: Path):
     print("=" * 60)
 
 
-def main():
+def main() -> None:
     """Main build process."""
     print("=" * 60)
     print("Video Processor - Windows Executable Builder")
@@ -346,10 +284,9 @@ def main():
     build_dir.mkdir(exist_ok=True)
     dist_dir.mkdir(exist_ok=True)
 
-    script_path = script_dir / "pipeline_vosk.py"
-
+    script_path = script_dir / "video_processor" / "__main__.py"
     if not script_path.exists():
-        print(f"Error: Script not found: {script_path}")
+        print(f"Error: Entry script not found: {script_path}")
         sys.exit(1)
 
     # Setup dependencies
@@ -371,27 +308,19 @@ def main():
     else:
         print("PyInstaller already installed")
 
-    # Create modified script
-    print("\n" + "-" * 60)
-    print("Step 3: Preparing build script...")
-    print("-" * 60)
-
-    modified_script = patch_script_for_exe(script_path, build_dir)
-    print(f"Created: {modified_script}")
-
     # Create spec file
     print("\n" + "-" * 60)
-    print("Step 4: Creating spec file...")
+    print("Step 3: Creating spec file...")
     print("-" * 60)
 
     spec_path = create_spec_file(
-        build_dir, modified_script, ffmpeg_dir, model_dir, fonts_dir
+        build_dir, script_path, ffmpeg_dir, model_dir, fonts_dir
     )
     print(f"Created: {spec_path}")
 
     # Build
     print("\n" + "-" * 60)
-    print("Step 5: Building executable...")
+    print("Step 4: Building executable...")
     print("-" * 60)
 
     build_exe(spec_path, dist_dir)
@@ -399,7 +328,7 @@ def main():
     print("\n" + "=" * 60)
     print("SUCCESS!")
     print("=" * 60)
-    print(f"\nYour executable is ready at:")
+    print("\nYour executable is ready at:")
     print(f"  {dist_dir / 'VideoProcessor' / 'VideoProcessor.exe'}")
     print(
         f"\nYou can zip the folder '{dist_dir / 'VideoProcessor'}' and distribute it."

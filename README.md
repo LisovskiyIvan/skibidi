@@ -2,6 +2,14 @@
 
 Скрипт для обработки видео: разбивает на сегменты, распознает речь через Vosk, добавляет субтитры и конвертирует в 9:16 формат.
 
+Проект разделён на три слоя:
+
+- **core** — чистая бизнес-логика (`config`, `ffmpeg`, `transcribe`, `subtitles`, `pipeline`, `resources`, `progress`).
+- **cli** — командная строка.
+- **ui** — Tkinter GUI.
+
+Все три слоя работают поверх одного и того же ядра `core`.
+
 ## Быстрый старт
 
 ### Linux / macOS (разработка)
@@ -18,10 +26,13 @@ unzip vosk-model-small-ru-0.22.zip
 ffmpeg -version
 
 # Запуск (GUI mode)
-python pipeline_vosk.py
+python -m video_processor
 
 # Запуск (CLI mode)
-python pipeline_vosk.py -i video.mp4 -o ./output
+python -m video_processor -i video.mp4 -o ./output
+
+# После установки пакета доступна команда video-processor
+video-processor -i video.mp4 -o ./output
 ```
 
 ### Windows (exe файл)
@@ -71,14 +82,27 @@ python build_windows.py
 
 ```
 .
-├── pipeline_vosk.py          # Основной скрипт
+├── video_processor/          # Пакет приложения
+│   ├── __init__.py
+│   ├── __main__.py          # Точка входа: python -m video_processor
+│   ├── cli.py                # CLI
+│   ├── ui.py                 # Tkinter GUI
+│   ├── config.py             # Конфигурация пайплайна
+│   ├── resources.py          # Пути к ресурсам (dev / PyInstaller bundle)
+│   ├── progress.py           # Протокол прогресса
+│   ├── pipeline.py           # Оркестрация пайплайна
+│   ├── ffmpeg.py             # FFmpeg/FFprobe обёртки
+│   ├── transcribe.py         # Vosk + группировка слов
+│   └── subtitles.py          # Генерация ASS
 ├── build_windows.py          # Скрипт сборки для Windows
 ├── requirements.txt          # Python зависимости
+├── pyproject.toml            # Метаданные и точка входа video-processor
+├── setup.sh                  # Setup Linux/macOS
 ├── .github/
 │   └── workflows/
 │       └── build-windows.yml # GitHub Actions workflow
 ├── assets/
-│   └── oswald/              # Шрифты (создается при сборке)
+│   └── oswald/              # Шрифты
 └── vosk-model-small-ru-0.22/ # Модель Vosk
 ```
 
@@ -87,46 +111,67 @@ python build_windows.py
 ### GUI режим (по умолчанию)
 
 ```bash
-python pipeline_vosk.py
+python -m video_processor
 ```
 
-Откроются два диалога:
-1. Выбор исходного видео
-2. Выбор папки для результатов
+Откроется окно с выбором исходного видео, папки для результатов и настройками.
 
 ### CLI режим
 
 ```bash
 # Полный CLI
-python pipeline_vosk.py -i video.mp4 -o ./results
+python -m video_processor -i video.mp4 -o ./results
 
 # Только input
-python pipeline_vosk.py -i video.mp4
-
-# Только output
-python pipeline_vosk.py -o ./results
+python -m video_processor -i video.mp4
 
 # Показать help
-python pipeline_vosk.py --help
+python -m video_processor --help
+```
+
+### Программное использование (core)
+
+```python
+from pathlib import Path
+from video_processor.config import PipelineConfig
+from video_processor.pipeline import run_pipeline
+from video_processor.progress import Step
+
+def on_progress(step: Step, current: int, total: int, message: str) -> None:
+    print(f"[{current}/{total}] {step.value}: {message}")
+
+config = PipelineConfig(
+    input=Path("assets/videoplayback.mp4"),
+    output_dir=Path("out"),
+    seg_seconds=60,
+    burn_subs=True,
+)
+run_pipeline(config, on_progress)
 ```
 
 ## Конфигурация
 
-Основные настройки в начале файла `pipeline_vosk.py`:
+Основные настройки CLI:
 
-```python
-SEG_SECONDS = 60          # Длительность сегмента в секундах
-BURN_SUBS = True          # Прожигать субтитры в видео
-SUBTITLE_FONTSIZE = 100   # Размер шрифта
-SUBTITLE_POS_Y = 1500     # Позиция по Y
-```
+| Аргумент | Описание | По умолчанию |
+|----------|----------|--------------|
+| `-i, --input` | Входное видео | — |
+| `-o, --output` | Папка для результатов | `out` |
+| `-m, --model` | Папка с моделью Vosk | `vosk-model-small-ru-0.22` |
+| `--seg-seconds` | Длительность сегмента | `60` |
+| `--burn-subs` / `--no-burn-subs` | Прожигать субтитры | `True` |
+| `--font` | Название шрифта | `Oswald` |
+| `--font-size` | Размер шрифта | `100` |
+| `--pos-y` | Позиция по Y | `1500` |
+| `--fade-in` | Появление, мс | `200` |
+| `--fade-out` | Исчезновение, мс | `200` |
 
 ## Зависимости
 
 ### Для разработки (Linux/macOS)
 
-- Python 3.8+
-- ffmpeg (установить через apt/brew)
+- Python 3.9+
+- ffmpeg (apt/brew)
 - Модель Vosk (скачать отдельно)
 - Шрифт Oswald (включен в репозиторий)
 
