@@ -12,6 +12,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+youtube = [
+    "google-api-python-client>=2.100",
+    "google-auth-oauthlib>=1.1",
+    "google-auth-httplib2>=0.2",
+]
 dev = [
     "pytest>=8",
     "mypy>=1.10",
@@ -55,6 +60,17 @@ disable_error_code = ["arg-type", "misc", "type-arg"]
 [[tool.mypy.overrides]]
 module = "vosk"
 # vosk ships no py.typed / stubs.
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "google.auth.transport.requests",
+    "google.oauth2.credentials",
+    "google_auth_oauthlib.flow",
+    "googleapiclient.discovery",
+    "googleapiclient.http",
+]
+# Optional upload dependencies; these are not installed by default.
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

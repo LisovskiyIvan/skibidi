@@ -57,3 +57,7 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.log
+
+# YouTube OAuth credentials
+client_secret.json
+token.json

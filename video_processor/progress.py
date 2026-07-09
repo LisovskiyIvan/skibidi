@@ -11,6 +11,7 @@ class Step(Enum):
     TRANSCRIBE = "transcribe"
     BURN = "burn"
     CONVERT = "convert"
+    UPLOAD = "upload"
     DONE = "done"
 
 

@@ -81,7 +81,7 @@ jobs:
             pathex=[],
             binaries=[],
             datas=added_files,
-            hiddenimports=['vosk', 'tkinter', 'video_processor', 'video_processor.ui', 'video_processor.resources', 'wave', 'json', 'math'],
+            hiddenimports=['vosk', 'tkinter', 'video_processor', 'video_processor.ui', 'video_processor.resources', 'video_processor.youtube', 'video_processor.youtube_config', 'wave', 'json', 'math', 'googleapiclient', 'google_auth_oauthlib', 'google.auth.transport.requests', 'google.oauth2.credentials'],
             hookspath=[],
             hooksconfig={},
             runtime_hooks=[],

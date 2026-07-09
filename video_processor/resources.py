@@ -2,8 +2,22 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
+
+
+def _user_config_dir() -> Path:
+    """Return the per-user config directory for OAuth and other secrets.
+
+    Uses ``%APPDATA%/video_processor`` on Windows and ``~/.config/video_processor``
+    elsewhere, creating the directory if needed. This directory is never bundled
+    inside a PyInstaller executable; it lives on the user's machine.
+    """
+    base = Path(os.environ.get("APPDATA", os.path.expanduser("~/.config")))
+    d = base / "video_processor"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 
 def _is_bundled() -> bool:
@@ -52,3 +66,13 @@ def get_default_font_name() -> str:
     if get_default_font_path().exists():
         return "Oswald"
     return "Arial"
+
+
+def get_default_credentials_path() -> Path:
+    """Path to the OAuth 2.0 Desktop client secret file."""
+    return _user_config_dir() / "client_secret.json"
+
+
+def get_default_token_path() -> Path:
+    """Path to the cached OAuth token file."""
+    return _user_config_dir() / "token.json"

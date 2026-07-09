@@ -20,7 +20,14 @@ except ImportError:
 from .config import PipelineConfig
 from .pipeline import run_pipeline
 from .progress import Step
-from .resources import get_default_font_path, get_default_model_dir
+from .resources import (
+    get_default_credentials_path,
+    get_default_font_path,
+    get_default_model_dir,
+    get_default_token_path,
+)
+from .youtube import upload_to_youtube
+from .youtube_config import YouTubeUploadConfig
 
 
 def run_gui() -> int:
@@ -152,13 +159,63 @@ if TKINTER_AVAILABLE:
 
             edit_frame.columnconfigure(1, weight=1)
 
+            # YouTube upload options
+            yt_frame = ttk.LabelFrame(frame, text="YouTube upload", padding=10)
+            yt_frame.grid(row=9, column=0, columnspan=3, sticky=tk.EW, pady=10)
+
+            self.yt_upload_var = tk.BooleanVar(value=False)
+            ttk.Checkbutton(
+                yt_frame, text="Upload to YouTube after processing", variable=self.yt_upload_var
+            ).grid(row=0, column=0, columnspan=3, sticky=tk.W, **padding)
+
+            ttk.Label(yt_frame, text="Credentials:").grid(row=1, column=0, sticky=tk.W, **padding)
+            self.yt_credentials_var = tk.StringVar(value=str(get_default_credentials_path()))
+            ttk.Entry(yt_frame, textvariable=self.yt_credentials_var, width=50).grid(
+                row=1, column=1, **padding
+            )
+            ttk.Button(yt_frame, text="Browse", command=self._browse_yt_credentials).grid(
+                row=1, column=2, sticky=tk.W, **padding
+            )
+
+            ttk.Label(yt_frame, text="Title:").grid(row=2, column=0, sticky=tk.W, **padding)
+            self.yt_title_var = tk.StringVar(value="{name}")
+            ttk.Entry(yt_frame, textvariable=self.yt_title_var, width=50).grid(
+                row=2, column=1, columnspan=2, sticky=tk.W, **padding
+            )
+
+            ttk.Label(yt_frame, text="Description:").grid(row=3, column=0, sticky=tk.W, **padding)
+            self.yt_description_var = tk.StringVar()
+            ttk.Entry(yt_frame, textvariable=self.yt_description_var, width=50).grid(
+                row=3, column=1, columnspan=2, sticky=tk.W, **padding
+            )
+
+            ttk.Label(yt_frame, text="Tags:").grid(row=4, column=0, sticky=tk.W, **padding)
+            self.yt_tags_var = tk.StringVar()
+            ttk.Entry(yt_frame, textvariable=self.yt_tags_var, width=50).grid(
+                row=4, column=1, columnspan=2, sticky=tk.W, **padding
+            )
+
+            ttk.Label(yt_frame, text="Privacy:").grid(row=5, column=0, sticky=tk.W, **padding)
+            self.yt_privacy_var = tk.StringVar(value="private")
+            ttk.Combobox(
+                yt_frame,
+                textvariable=self.yt_privacy_var,
+                values=["private", "unlisted", "public"],
+                width=12,
+                state="readonly",
+            ).grid(row=5, column=1, sticky=tk.W, **padding)
+
+            yt_frame.columnconfigure(1, weight=1)
+
             # Run button
             self.run_button = ttk.Button(frame, text="Run", command=self._run)
-            self.run_button.grid(row=9, column=0, columnspan=3, pady=15)
+            self.run_button.grid(row=10, column=0, columnspan=3, pady=15)
 
             # Progress
             self.progress_var = tk.StringVar(value="Ready")
-            ttk.Label(frame, textvariable=self.progress_var, wraplength=850).grid(row=10, column=0, columnspan=3, sticky=tk.W, **padding)
+            ttk.Label(frame, textvariable=self.progress_var, wraplength=850).grid(
+                row=11, column=0, columnspan=3, sticky=tk.W, **padding
+            )
 
             frame.columnconfigure(1, weight=1)
 
@@ -181,6 +238,11 @@ if TKINTER_AVAILABLE:
             path = filedialog.askopenfilename(filetypes=[("Audio files", "*.mp3 *.wav *.aac *.ogg *.m4a"), ("All files", "*.*")])
             if path:
                 self.bg_audio_var.set(path)
+
+        def _browse_yt_credentials(self) -> None:
+            path = filedialog.askopenfilename(filetypes=[("OAuth secret", "client_secret.json"), ("JSON files", "*.json"), ("All files", "*.*")])
+            if path:
+                self.yt_credentials_var.set(path)
 
         def _float_or_none(self, var: tk.StringVar) -> float | None:
             value = var.get().strip()
@@ -211,6 +273,18 @@ if TKINTER_AVAILABLE:
                 background_audio_volume=float(self.bg_volume_var.get() or 0.3),
             )
 
+        def _make_yt_config(self, video_paths: list[Path]) -> YouTubeUploadConfig:
+            tags = [tag.strip() for tag in self.yt_tags_var.get().split(",") if tag.strip()]
+            return YouTubeUploadConfig(
+                video_paths=video_paths,
+                credentials_path=Path(self.yt_credentials_var.get()),
+                token_path=get_default_token_path(),
+                title=self.yt_title_var.get(),
+                description=self.yt_description_var.get(),
+                tags=tags,
+                privacy_status=self.yt_privacy_var.get(),
+            )
+
         def _progress(self, step: Step, current: int, total: int, message: str) -> None:
             text = f"[{current}/{total}] {step.value}: {message}"
             # Marshal to the Tk main thread: Tkinter is not thread-safe, and this
@@ -226,20 +300,37 @@ if TKINTER_AVAILABLE:
             self.progress_var.set("Starting...")
 
             config = self._make_config()
+            should_upload = self.yt_upload_var.get()
 
             def target() -> None:
+                video_ids: list[str] = []
                 try:
                     run_pipeline(config, self._progress)
-                    self.root.after(0, self._on_success)
+                    if should_upload:
+                        final_dir = config.output_dir / "final"
+                        if config.burn_subs:
+                            upload_paths = sorted(final_dir.glob("clip_*_sub.mp4"))
+                        else:
+                            all_clips = sorted(final_dir.glob("clip_*.mp4"))
+                            upload_paths = [p for p in all_clips if not p.name.endswith("_sub.mp4")]
+                        if not upload_paths:
+                            raise RuntimeError("No final clips found to upload.")
+                        yt_config = self._make_yt_config(upload_paths)
+                        video_ids = upload_to_youtube(yt_config, self._progress)
+                    self.root.after(0, lambda ids=video_ids: self._on_success(ids))
                 except Exception as exc:  # noqa: BLE001
                     self.root.after(0, lambda e=exc: self._on_error(e))
 
             thread = threading.Thread(target=target, daemon=True)
             thread.start()
 
-        def _on_success(self) -> None:
+        def _on_success(self, video_ids: list[str] | None = None) -> None:
             self.run_button.config(state=tk.NORMAL)
-            messagebox.showinfo("Done", "Pipeline completed successfully.")
+            if video_ids:
+                links = "\n".join(f"https://youtu.be/{vid}" for vid in video_ids)
+                messagebox.showinfo("Done", f"Pipeline completed and uploaded {len(video_ids)} video(s):\n\n{links}")
+            else:
+                messagebox.showinfo("Done", "Pipeline completed successfully.")
 
         def _on_error(self, exc: Exception) -> None:
             self.run_button.config(state=tk.NORMAL)

@@ -5,7 +5,7 @@
 Проект разделён на три **концептуальных слоя** (все модули лежат в одном плоском
 пакете `video_processor/`):
 
-- **core** — чистая бизнес-логика (`config`, `ffmpeg`, `transcribe`, `subtitles`, `pipeline`, `resources`, `progress`, `errors`).
+- **core** — чистая бизнес-логика (`config`, `ffmpeg`, `transcribe`, `subtitles`, `pipeline`, `youtube`, `youtube_config`, `resources`, `progress`, `errors`).
 - **cli** — командная строка (`cli`, `__main__`).
 - **ui** — Tkinter GUI (`ui`).
 
@@ -96,6 +96,8 @@ python build_windows.py
 │   ├── pipeline.py           # Оркестрация пайплайна
 │   ├── ffmpeg.py             # FFmpeg/FFprobe обёртки
 │   ├── transcribe.py         # Vosk + группировка слов
+│   ├── youtube.py            # Загрузка видео на YouTube
+│   ├── youtube_config.py     # Конфигурация загрузки на YouTube
 │   └── subtitles.py          # Генерация ASS
 ├── tests/                    # pytest-тесты (чистые функции + пайплайн)
 ├── build_windows.py          # Скрипт сборки для Windows
@@ -113,15 +115,16 @@ python build_windows.py
 
 ## Разработка
 
-Дев-тулчейн (pytest, mypy, ruff) ставится опциональной группой зависимостей:
+Дев-тулчейн (pytest, mypy, ruff) ставится опциональной группой зависимостей.
+Для загрузки на YouTube нужна отдельная группа `[youtube]`:
 
 ```bash
-pip install -e ".[dev]"
-# или через uv: uv pip install -e ".[dev]"
+pip install -e ".[dev,youtube]"
+# или через uv: uv pip install -e ".[dev,youtube]"
 
 ruff check .   # линтер
 mypy           # статическая типизация ядра (Tkinter-GUI исключён из-за шума stubs)
-pytest         # 45+ unit-тестов на чистые функции и оркестрацию
+pytest         # unit-тесты на чистые функции и оркестрацию
 ```
 
 Все три проверки прогоняются в CI (`.github/workflows/ci.yml`) на каждый push/PR.
@@ -198,6 +201,51 @@ run_pipeline(config, on_progress)
 | `--overlay-text` | Текстовый оверлей | — |
 | `--bg-audio` | Фоновое аудио | — |
 | `--bg-volume` | Громкость фона | `0.3` |
+| `--upload` | Загрузить итоговые клипы на YouTube после обработки | `False` |
+| `--upload-only` | Загрузить один файл или папку без запуска пайплайна | — |
+| `--yt-credentials` | Путь к `client_secret.json` OAuth | `~/.config/video_processor/client_secret.json` |
+| `--yt-token` | Путь к кешированному `token.json` | `~/.config/video_processor/token.json` |
+| `--yt-title` | Шаблон названия видео (`{name}`, `{idx}`, `{total}`) | `{name}` |
+| `--yt-description` | Описание видео | — |
+| `--yt-tags` | Теги через запятую | — |
+| `--yt-privacy` | Приватность: `private`, `unlisted`, `public` | `private` |
+| `--yt-category` | ID категории YouTube | `22` |
+| `--yt-notify` | Уведомлять подписчиков | `False` |
+
+### Загрузка на YouTube
+
+Автоматическая загрузка готовых клипов на YouTube работает через **YouTube Data API v3**
+и OAuth 2.0. После первой авторизации (`client_secret.json`) токен сохраняется в
+`token.json`, и все следующие запуски будут полностью автоматическими.
+
+1. Установите зависимости для загрузки:
+
+```bash
+pip install -e ".[youtube]"
+```
+
+2. Создайте OAuth 2.0 Desktop credentials в [Google Cloud Console](https://console.cloud.google.com/)
+   и скачайте `client_secret.json`.
+
+3. Положите `client_secret.json` в `~/.config/video_processor/` (Linux/macOS) или
+   `%APPDATA%\video_processor\` (Windows).
+
+4. Запустите обработку с загрузкой:
+
+```bash
+python -m video_processor -i video.mp4 -o ./out --upload \
+  --yt-title "Clip {idx:02d}" --yt-privacy private --yt-tags "shorts,automation"
+```
+
+Первый запрос откроет браузер для подтверждения доступа. После этого
+`token.json` кешируется, и браузер больше не нужен.
+
+Загрузить готовый файл без обработки:
+
+```bash
+python -m video_processor --upload-only ./out/final/clip_00_sub.mp4 \
+  --yt-title "My video" --yt-privacy public
+```
 
 ### Пример CLI с эффектами
 

@@ -15,3 +15,8 @@ class TestDefaultMessage:
         msg = default_message(Step.TRANSCRIBE, 2, 3, "words")
         assert "transcribe" in msg
         assert "[3/3]" in msg
+
+    def test_upload_step_message(self) -> None:
+        msg = default_message(Step.UPLOAD, 0, 2, "uploading a.mp4 45%")
+        assert "upload" in msg
+        assert "[1/2]" in msg
