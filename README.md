@@ -5,7 +5,7 @@
 Проект разделён на три **концептуальных слоя** (все модули лежат в одном плоском
 пакете `video_processor/`):
 
-- **core** — чистая бизнес-логика (`config`, `ffmpeg`, `transcribe`, `subtitles`, `pipeline`, `youtube`, `youtube_config`, `resources`, `progress`, `errors`).
+- **core** — чистая бизнес-логика (`config`, `ffmpeg`, `transcribe`, `subtitles`, `pipeline`, `youtube`, `youtube_config`, `youtube_download`, `youtube_download_config`, `resources`, `progress`, `errors`).
 - **cli** — командная строка (`cli`, `__main__`).
 - **ui** — Tkinter GUI (`ui`).
 
@@ -98,6 +98,8 @@ python build_windows.py
 │   ├── transcribe.py         # Vosk + группировка слов
 │   ├── youtube.py            # Загрузка видео на YouTube
 │   ├── youtube_config.py     # Конфигурация загрузки на YouTube
+│   ├── youtube_download.py   # Скачивание видео с YouTube
+│   ├── youtube_download_config.py # Конфигурация скачивания с YouTube
 │   └── subtitles.py          # Генерация ASS
 ├── tests/                    # pytest-тесты (чистые функции + пайплайн)
 ├── build_windows.py          # Скрипт сборки для Windows
@@ -116,11 +118,14 @@ python build_windows.py
 ## Разработка
 
 Дев-тулчейн (pytest, mypy, ruff) ставится опциональной группой зависимостей.
-Для загрузки на YouTube нужна отдельная группа `[youtube]`:
+Для загрузки на YouTube нужна отдельная группа `[youtube]`, для скачивания — `[download]`:
 
 ```bash
-pip install -e ".[dev,youtube]"
-# или через uv: uv pip install -e ".[dev,youtube]"
+pip install -e ".[dev,youtube,download]"
+# или только нужные группы:
+# pip install -e ".[dev]"
+# pip install -e ".[dev,youtube]"
+# pip install -e ".[dev,download]"
 
 ruff check .   # линтер
 mypy           # статическая типизация ядра (Tkinter-GUI исключён из-за шума stubs)
@@ -138,6 +143,9 @@ python -m video_processor
 ```
 
 Откроется окно с выбором исходного видео, папки для результатов и настройками.
+Также в разделе **YouTube download** можно вставить один или несколько URL
+(по одному на строку), задать формат/шаблон yt-dlp и нажать **Download** —
+видео сохранится в выбранную папку `--output` (по умолчанию `./out`).
 
 ### CLI режим
 
@@ -203,6 +211,9 @@ run_pipeline(config, on_progress)
 | `--bg-volume` | Громкость фона | `0.3` |
 | `--upload` | Загрузить итоговые клипы на YouTube после обработки | `False` |
 | `--upload-only` | Загрузить один файл или папку без запуска пайплайна | — |
+| `--download` | Скачать видео с YouTube URL(ов) в `--output` | — |
+| `--dl-format` | yt-dlp format string (default: best mp4) | — |
+| `--dl-template` | yt-dlp output template | — |
 | `--yt-credentials` | Путь к `client_secret.json` OAuth | `~/.config/video_processor/client_secret.json` |
 | `--yt-token` | Путь к кешированному `token.json` | `~/.config/video_processor/token.json` |
 | `--yt-title` | Шаблон названия видео (`{name}`, `{idx}`, `{total}`) | `{name}` |
@@ -211,6 +222,39 @@ run_pipeline(config, on_progress)
 | `--yt-privacy` | Приватность: `private`, `unlisted`, `public` | `private` |
 | `--yt-category` | ID категории YouTube | `22` |
 | `--yt-notify` | Уведомлять подписчиков | `False` |
+
+### Скачивание с YouTube
+
+Модуль скачивания работает через **yt-dlp** и сохраняет видео в папку из `--output`
+(по умолчанию `./out`). По умолчанию выбирается формат `mp4`, так как остальные
+шаги пайплайна (сегментация, загрузка) ожидают файлы `.mp4`.
+
+1. Установите зависимости для скачивания:
+
+```bash
+pip install -e ".[download]"
+```
+
+2. Скачайте одно или несколько видео:
+
+```bash
+python -m video_processor --download https://www.youtube.com/watch?v=XXX -o ./out
+```
+
+Несколько URL за один запуск:
+
+```bash
+python -m video_processor --download https://youtu.be/ABC https://youtu.be/DEF -o ./out
+```
+
+3. Дополнительные опции yt-dlp:
+
+```bash
+python -m video_processor --download https://youtu.be/XXX \
+  --dl-format "bestvideo[height<=1080]+bestaudio" \
+  --dl-template "%(title)s.%(ext)s" \
+  -o ./downloads
+```
 
 ### Загрузка на YouTube
 

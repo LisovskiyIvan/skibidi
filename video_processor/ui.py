@@ -28,6 +28,8 @@ from .resources import (
 )
 from .youtube import upload_to_youtube
 from .youtube_config import YouTubeUploadConfig
+from .youtube_download import download_from_youtube
+from .youtube_download_config import YouTubeDownloadConfig
 
 
 def run_gui() -> int:
@@ -214,14 +216,45 @@ if TKINTER_AVAILABLE:
 
             yt_frame.columnconfigure(1, weight=1)
 
+            # YouTube download options
+            dl_frame = ttk.LabelFrame(frame, text="YouTube download", padding=10)
+            dl_frame.grid(row=10, column=0, columnspan=3, sticky=tk.EW, pady=10)
+
+            ttk.Label(dl_frame, text="URLs (one per line):").grid(
+                row=0, column=0, sticky=tk.NW, **padding
+            )
+            self.dl_urls_text = tk.Text(dl_frame, width=50, height=3, wrap=tk.NONE)
+            self.dl_urls_text.grid(row=0, column=1, columnspan=2, sticky=tk.EW, **padding)
+
+            ttk.Label(dl_frame, text="Format:").grid(
+                row=1, column=0, sticky=tk.W, **padding
+            )
+            self.dl_format_var = tk.StringVar()
+            ttk.Entry(dl_frame, textvariable=self.dl_format_var, width=50).grid(
+                row=1, column=1, columnspan=2, sticky=tk.W, **padding
+            )
+
+            ttk.Label(dl_frame, text="Template:").grid(
+                row=2, column=0, sticky=tk.W, **padding
+            )
+            self.dl_template_var = tk.StringVar()
+            ttk.Entry(dl_frame, textvariable=self.dl_template_var, width=50).grid(
+                row=2, column=1, columnspan=2, sticky=tk.W, **padding
+            )
+
+            self.dl_button = ttk.Button(dl_frame, text="Download", command=self._run_download)
+            self.dl_button.grid(row=3, column=0, columnspan=3, pady=5)
+
+            dl_frame.columnconfigure(1, weight=1)
+
             # Run button
             self.run_button = ttk.Button(frame, text="Run", command=self._run)
-            self.run_button.grid(row=10, column=0, columnspan=3, pady=15)
+            self.run_button.grid(row=11, column=0, columnspan=3, pady=15)
 
             # Progress
             self.progress_var = tk.StringVar(value="Ready")
             ttk.Label(frame, textvariable=self.progress_var, wraplength=850).grid(
-                row=11, column=0, columnspan=3, sticky=tk.W, **padding
+                row=12, column=0, columnspan=3, sticky=tk.W, **padding
             )
 
             frame.columnconfigure(1, weight=1)
@@ -291,6 +324,56 @@ if TKINTER_AVAILABLE:
                 tags=tags,
                 privacy_status=self.yt_privacy_var.get(),
             )
+
+        def _make_download_config(self) -> YouTubeDownloadConfig:
+            raw = self.dl_urls_text.get("1.0", "end")
+            urls = [line.strip() for line in raw.splitlines() if line.strip()]
+            cfg = YouTubeDownloadConfig(
+                urls=urls,
+                output_dir=Path(self.output_var.get()),
+            )
+            format_value = self.dl_format_var.get().strip()
+            template_value = self.dl_template_var.get().strip()
+            if format_value:
+                cfg.format = format_value
+            if template_value:
+                cfg.outtmpl = template_value
+            return cfg
+
+        def _run_download(self) -> None:
+            if not self.dl_urls_text.get("1.0", "end").strip():
+                messagebox.showerror("Error", "Please enter at least one YouTube URL.")
+                return
+
+            self.dl_button.config(state=tk.DISABLED)
+            self.run_button.config(state=tk.DISABLED)
+            self.progress_var.set("Starting download...")
+
+            def target() -> None:
+                paths: list[Path] = []
+                try:
+                    dl_config = self._make_download_config()
+                    paths = download_from_youtube(dl_config, self._progress)
+                    self.root.after(0, lambda ps=paths: self._on_download_success(ps))
+                except Exception as exc:  # noqa: BLE001
+                    self.root.after(0, lambda e=exc: self._on_download_error(e))
+
+            thread = threading.Thread(target=target, daemon=True)
+            thread.start()
+
+        def _on_download_success(self, paths: list[Path]) -> None:
+            self.dl_button.config(state=tk.NORMAL)
+            self.run_button.config(state=tk.NORMAL)
+            links = "\n".join(str(p) for p in paths)
+            messagebox.showinfo(
+                "Download complete",
+                f"Downloaded {len(paths)} video(s):\n\n{links}",
+            )
+
+        def _on_download_error(self, exc: Exception) -> None:
+            self.dl_button.config(state=tk.NORMAL)
+            self.run_button.config(state=tk.NORMAL)
+            messagebox.showerror("Error", f"Download failed:\n{exc}")
 
         def _progress(self, step: Step, current: int, total: int, message: str) -> None:
             text = f"[{current}/{total}] {step.value}: {message}"

@@ -17,6 +17,9 @@ youtube = [
     "google-auth-oauthlib>=1.1",
     "google-auth-httplib2>=0.2",
 ]
+download = [
+    "yt-dlp>=2024.4.9",
+]
 dev = [
     "pytest>=8",
     "mypy>=1.10",
@@ -69,8 +72,9 @@ module = [
     "google_auth_oauthlib.flow",
     "googleapiclient.discovery",
     "googleapiclient.http",
+    "yt_dlp",
 ]
-# Optional upload dependencies; these are not installed by default.
+# Optional upload/download dependencies; these are not installed by default.
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

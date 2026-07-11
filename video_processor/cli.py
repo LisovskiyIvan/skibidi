@@ -18,6 +18,8 @@ from .resources import (
 )
 from .youtube import upload_to_youtube
 from .youtube_config import YouTubeUploadConfig
+from .youtube_download import download_from_youtube
+from .youtube_download_config import YouTubeDownloadConfig
 
 
 def _create_progress_callback() -> ProgressCallback:
@@ -247,6 +249,27 @@ def build_parser() -> argparse.ArgumentParser:
         default=False,
         help="Notify subscribers about new uploads (default: false).",
     )
+    # YouTube download options
+    parser.add_argument(
+        "--download",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Download video(s) from YouTube URL(s) into --output. "
+        "Standalone mode (like --upload-only): does not run the pipeline.",
+    )
+    parser.add_argument(
+        "--dl-format",
+        type=str,
+        default=None,
+        help="yt-dlp format string (default: best mp4).",
+    )
+    parser.add_argument(
+        "--dl-template",
+        type=str,
+        default=None,
+        help="yt-dlp output template (default: %%(title).100s.%%(ext)s).",
+    )
     return parser
 
 
@@ -298,6 +321,20 @@ def youtube_config_from_args(
     )
 
 
+def youtube_download_config_from_args(
+    args: argparse.Namespace,
+) -> YouTubeDownloadConfig:
+    cfg = YouTubeDownloadConfig(
+        urls=list(args.download or []),
+        output_dir=args.output,
+    )
+    if args.dl_format:
+        cfg.format = args.dl_format
+    if args.dl_template:
+        cfg.outtmpl = args.dl_template
+    return cfg
+
+
 def _collect_upload_paths(pipeline_config: PipelineConfig) -> list[Path]:
     """Collect rendered final clips from the pipeline output directory."""
     final_dir = pipeline_config.output_dir / "final"
@@ -324,9 +361,37 @@ def _do_upload(
     return video_ids
 
 
+def _do_download(
+    config: YouTubeDownloadConfig,
+    progress: ProgressCallback,
+) -> list[Path]:
+    """Run download and print the saved file paths to stdout."""
+    paths = download_from_youtube(config, progress)
+    print("YouTube download complete:")
+    for path in paths:
+        print(f"  {path}")
+    return paths
+
+
 def run_cli(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.download:
+        if args.input:
+            parser.error("--download cannot be combined with -i/--input")
+        if args.upload_only:
+            parser.error("--download cannot be combined with --upload-only")
+        dl_config = youtube_download_config_from_args(args)
+        try:
+            _do_download(dl_config, _create_progress_callback())
+        except PipelineError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
+        except Exception as exc:  # noqa: BLE001
+            print(f"Unexpected error: {exc}", file=sys.stderr)
+            return 1
+        return 0
 
     if args.upload_only:
         if args.input:

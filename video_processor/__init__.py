@@ -2,7 +2,7 @@
 
 Split into logical layers:
 - core: business logic (ffmpeg, transcription, subtitles, pipeline orchestration,
-  YouTube upload, resources, progress, errors)
+  YouTube upload/download, resources, progress, errors)
 - cli: command-line interface
 - ui: optional Tkinter GUI
 """
