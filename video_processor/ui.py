@@ -68,196 +68,257 @@ if TKINTER_AVAILABLE:
 
             frame = ttk.Frame(self.root, padding=15)
             frame.pack(fill=tk.BOTH, expand=True)
+            frame.rowconfigure(0, weight=1)
+            frame.columnconfigure(0, weight=1)
 
+            notebook = ttk.Notebook(frame)
+            notebook.grid(row=0, column=0, sticky=tk.NSEW)
+
+            process_tab = ttk.Frame(notebook, padding=10)
+            notebook.add(process_tab, text="Process")
+            self._build_process_tab(process_tab, padding)
+
+            upload_tab = ttk.Frame(notebook, padding=10)
+            notebook.add(upload_tab, text="Upload")
+            self._build_upload_tab(upload_tab, padding)
+
+            download_tab = ttk.Frame(notebook, padding=10)
+            notebook.add(download_tab, text="Download")
+            self._build_download_tab(download_tab, padding)
+
+            self.run_button = ttk.Button(frame, text="Run", command=self._run)
+            self.run_button.grid(row=1, column=0, pady=15)
+
+            self.progress_var = tk.StringVar(value="Ready")
+            ttk.Label(frame, textvariable=self.progress_var, wraplength=850).grid(
+                row=2, column=0, sticky=tk.W, **padding
+            )
+
+        def _build_process_tab(self, tab: ttk.Frame, padding: dict[str, int]) -> None:
             # Input
-            ttk.Label(frame, text="Input video:").grid(row=0, column=0, sticky=tk.W, **padding)
+            ttk.Label(tab, text="Input video:").grid(row=0, column=0, sticky=tk.W, **padding)
             self.input_var = tk.StringVar()
-            ttk.Entry(frame, textvariable=self.input_var, width=50).grid(row=0, column=1, **padding)
-            ttk.Button(frame, text="Browse", command=self._browse_input).grid(row=0, column=2, **padding)
+            ttk.Entry(tab, textvariable=self.input_var, width=50).grid(row=0, column=1, **padding)
+            ttk.Button(tab, text="Browse", command=self._browse_input).grid(row=0, column=2, **padding)
 
             # Output
-            ttk.Label(frame, text="Output folder:").grid(row=1, column=0, sticky=tk.W, **padding)
+            ttk.Label(tab, text="Output folder:").grid(row=1, column=0, sticky=tk.W, **padding)
             self.output_var = tk.StringVar(value="out")
-            ttk.Entry(frame, textvariable=self.output_var, width=50).grid(row=1, column=1, **padding)
-            ttk.Button(frame, text="Browse", command=self._browse_output).grid(row=1, column=2, **padding)
+            ttk.Entry(tab, textvariable=self.output_var, width=50).grid(row=1, column=1, **padding)
+            ttk.Button(tab, text="Browse", command=self._browse_output).grid(row=1, column=2, **padding)
 
             # Model
-            ttk.Label(frame, text="Vosk model:").grid(row=2, column=0, sticky=tk.W, **padding)
+            ttk.Label(tab, text="Vosk model:").grid(row=2, column=0, sticky=tk.W, **padding)
             self.model_var = tk.StringVar(value=str(get_default_model_dir()))
-            ttk.Entry(frame, textvariable=self.model_var, width=50).grid(row=2, column=1, **padding)
-            ttk.Button(frame, text="Browse", command=self._browse_model).grid(row=2, column=2, **padding)
+            ttk.Entry(tab, textvariable=self.model_var, width=50).grid(row=2, column=1, **padding)
+            ttk.Button(tab, text="Browse", command=self._browse_model).grid(row=2, column=2, **padding)
 
             # Settings
-            ttk.Label(frame, text="Segment seconds:").grid(row=3, column=0, sticky=tk.W, **padding)
+            ttk.Label(tab, text="Segment seconds:").grid(row=3, column=0, sticky=tk.W, **padding)
             self.seg_var = tk.IntVar(value=60)
-            ttk.Spinbox(frame, from_=10, to=600, textvariable=self.seg_var, width=10).grid(row=3, column=1, sticky=tk.W, **padding)
+            ttk.Spinbox(tab, from_=10, to=600, textvariable=self.seg_var, width=10).grid(
+                row=3, column=1, sticky=tk.W, **padding
+            )
 
             self.burn_var = tk.BooleanVar(value=True)
-            ttk.Checkbutton(frame, text="Burn subtitles", variable=self.burn_var).grid(row=4, column=1, sticky=tk.W, **padding)
+            ttk.Checkbutton(tab, text="Burn subtitles", variable=self.burn_var).grid(
+                row=4, column=1, sticky=tk.W, **padding
+            )
 
-            ttk.Label(frame, text="Font name:").grid(row=5, column=0, sticky=tk.W, **padding)
+            ttk.Label(tab, text="Font name:").grid(row=5, column=0, sticky=tk.W, **padding)
             self.font_var = tk.StringVar(value="Oswald")
-            ttk.Entry(frame, textvariable=self.font_var, width=20).grid(row=5, column=1, sticky=tk.W, **padding)
+            ttk.Entry(tab, textvariable=self.font_var, width=20).grid(
+                row=5, column=1, sticky=tk.W, **padding
+            )
 
-            ttk.Label(frame, text="Font size:").grid(row=6, column=0, sticky=tk.W, **padding)
+            ttk.Label(tab, text="Font size:").grid(row=6, column=0, sticky=tk.W, **padding)
             self.font_size_var = tk.IntVar(value=100)
-            ttk.Spinbox(frame, from_=10, to=300, textvariable=self.font_size_var, width=10).grid(row=6, column=1, sticky=tk.W, **padding)
+            ttk.Spinbox(tab, from_=10, to=300, textvariable=self.font_size_var, width=10).grid(
+                row=6, column=1, sticky=tk.W, **padding
+            )
 
-            ttk.Label(frame, text="Position Y:").grid(row=7, column=0, sticky=tk.W, **padding)
+            ttk.Label(tab, text="Position Y:").grid(row=7, column=0, sticky=tk.W, **padding)
             self.pos_y_var = tk.IntVar(value=1500)
-            ttk.Spinbox(frame, from_=0, to=1920, textvariable=self.pos_y_var, width=10).grid(row=7, column=1, sticky=tk.W, **padding)
+            ttk.Spinbox(tab, from_=0, to=1920, textvariable=self.pos_y_var, width=10).grid(
+                row=7, column=1, sticky=tk.W, **padding
+            )
 
             # Fingerprint / editing options
-            edit_frame = ttk.LabelFrame(frame, text="Fingerprint evasion / editing", padding=10)
+            edit_frame = ttk.LabelFrame(tab, text="Fingerprint evasion / editing", padding=10)
             edit_frame.grid(row=8, column=0, columnspan=3, sticky=tk.EW, pady=10)
 
             self.mirror_var = tk.BooleanVar(value=True)
-            ttk.Checkbutton(edit_frame, text="Mirror horizontally", variable=self.mirror_var).grid(row=0, column=0, sticky=tk.W, **padding)
+            ttk.Checkbutton(edit_frame, text="Mirror horizontally", variable=self.mirror_var).grid(
+                row=0, column=0, sticky=tk.W, **padding
+            )
 
             ttk.Label(edit_frame, text="Speed:").grid(row=1, column=0, sticky=tk.W, **padding)
             self.speed_var = tk.StringVar(value="0.95-1.05")
-            ttk.Entry(edit_frame, textvariable=self.speed_var, width=20).grid(row=1, column=1, sticky=tk.W, **padding)
-            ttk.Label(edit_frame, text="e.g. 1.0 or 0.95-1.05 (1.0 = original)").grid(row=1, column=2, sticky=tk.W, **padding)
-
-            ttk.Label(edit_frame, text="Brightness:").grid(row=2, column=0, sticky=tk.W, **padding)
-            self.brightness_var = tk.StringVar()
-            ttk.Entry(edit_frame, textvariable=self.brightness_var, width=10).grid(row=2, column=1, sticky=tk.W, **padding)
-            ttk.Label(edit_frame, text="0 = original, -1.0 to 1.0").grid(row=2, column=2, sticky=tk.W, **padding)
-
-            ttk.Label(edit_frame, text="Contrast:").grid(row=3, column=0, sticky=tk.W, **padding)
-            self.contrast_var = tk.StringVar()
-            ttk.Entry(edit_frame, textvariable=self.contrast_var, width=10).grid(row=3, column=1, sticky=tk.W, **padding)
-            ttk.Label(edit_frame, text="1.0 = original, range -1000 to 1000").grid(row=3, column=2, sticky=tk.W, **padding)
-
-            ttk.Label(edit_frame, text="Saturation:").grid(row=4, column=0, sticky=tk.W, **padding)
-            self.saturation_var = tk.StringVar()
-            ttk.Entry(edit_frame, textvariable=self.saturation_var, width=10).grid(row=4, column=1, sticky=tk.W, **padding)
-            ttk.Label(edit_frame, text="1.0 = original, 0 = grayscale, 0 to 3").grid(row=4, column=2, sticky=tk.W, **padding)
-
-            ttk.Label(edit_frame, text="Gamma:").grid(row=5, column=0, sticky=tk.W, **padding)
-            self.gamma_var = tk.StringVar()
-            ttk.Entry(edit_frame, textvariable=self.gamma_var, width=10).grid(row=5, column=1, sticky=tk.W, **padding)
-            ttk.Label(edit_frame, text="1.0 = original, range 0.1 to 10").grid(row=5, column=2, sticky=tk.W, **padding)
-
-            ttk.Label(edit_frame, text="Hue:").grid(row=6, column=0, sticky=tk.W, **padding)
-            self.hue_var = tk.StringVar()
-            ttk.Entry(edit_frame, textvariable=self.hue_var, width=10).grid(row=6, column=1, sticky=tk.W, **padding)
-            ttk.Label(edit_frame, text="0 = original, 0 to 360 degrees").grid(row=6, column=2, sticky=tk.W, **padding)
-
-            self.sharpness_var = tk.BooleanVar(value=False)
-            ttk.Checkbutton(edit_frame, text="Sharpen", variable=self.sharpness_var).grid(row=7, column=0, sticky=tk.W, **padding)
-
-            ttk.Label(edit_frame, text="Noise:").grid(row=8, column=0, sticky=tk.W, **padding)
-            self.noise_var = tk.StringVar(value="0")
-            ttk.Entry(edit_frame, textvariable=self.noise_var, width=10).grid(row=8, column=1, sticky=tk.W, **padding)
-            ttk.Label(edit_frame, text="0 = off, higher = stronger grain").grid(row=8, column=2, sticky=tk.W, **padding)
-
-            ttk.Label(edit_frame, text="Overlay text:").grid(row=9, column=0, sticky=tk.W, **padding)
-            self.overlay_text_var = tk.StringVar()
-            ttk.Entry(edit_frame, textvariable=self.overlay_text_var, width=40).grid(row=9, column=1, columnspan=2, sticky=tk.W, **padding)
-
-            ttk.Label(edit_frame, text="Background audio:").grid(row=10, column=0, sticky=tk.W, **padding)
-            self.bg_audio_var = tk.StringVar()
-            ttk.Entry(edit_frame, textvariable=self.bg_audio_var, width=40).grid(row=10, column=1, sticky=tk.W, **padding)
-            ttk.Button(edit_frame, text="Browse", command=self._browse_bg_audio).grid(row=10, column=2, sticky=tk.W, **padding)
-
-            ttk.Label(edit_frame, text="BG volume:").grid(row=11, column=0, sticky=tk.W, **padding)
-            self.bg_volume_var = tk.StringVar(value="0.3")
-            ttk.Entry(edit_frame, textvariable=self.bg_volume_var, width=10).grid(row=11, column=1, sticky=tk.W, **padding)
-            ttk.Label(edit_frame, text="0.0 = silent, 1.0 = full").grid(row=11, column=2, sticky=tk.W, **padding)
-
-            edit_frame.columnconfigure(1, weight=1)
-
-            # YouTube upload options
-            yt_frame = ttk.LabelFrame(frame, text="YouTube upload", padding=10)
-            yt_frame.grid(row=9, column=0, columnspan=3, sticky=tk.EW, pady=10)
-
-            self.yt_upload_var = tk.BooleanVar(value=False)
-            ttk.Checkbutton(
-                yt_frame, text="Upload to YouTube after processing", variable=self.yt_upload_var
-            ).grid(row=0, column=0, columnspan=3, sticky=tk.W, **padding)
-
-            ttk.Label(yt_frame, text="Credentials:").grid(row=1, column=0, sticky=tk.W, **padding)
-            self.yt_credentials_var = tk.StringVar(value=str(get_default_credentials_path()))
-            ttk.Entry(yt_frame, textvariable=self.yt_credentials_var, width=50).grid(
-                row=1, column=1, **padding
+            ttk.Entry(edit_frame, textvariable=self.speed_var, width=20).grid(
+                row=1, column=1, sticky=tk.W, **padding
             )
-            ttk.Button(yt_frame, text="Browse", command=self._browse_yt_credentials).grid(
+            ttk.Label(edit_frame, text="e.g. 1.0 or 0.95-1.05 (1.0 = original)").grid(
                 row=1, column=2, sticky=tk.W, **padding
             )
 
-            ttk.Label(yt_frame, text="Title:").grid(row=2, column=0, sticky=tk.W, **padding)
+            ttk.Label(edit_frame, text="Brightness:").grid(row=2, column=0, sticky=tk.W, **padding)
+            self.brightness_var = tk.StringVar()
+            ttk.Entry(edit_frame, textvariable=self.brightness_var, width=10).grid(
+                row=2, column=1, sticky=tk.W, **padding
+            )
+            ttk.Label(edit_frame, text="0 = original, -1.0 to 1.0").grid(
+                row=2, column=2, sticky=tk.W, **padding
+            )
+
+            ttk.Label(edit_frame, text="Contrast:").grid(row=3, column=0, sticky=tk.W, **padding)
+            self.contrast_var = tk.StringVar()
+            ttk.Entry(edit_frame, textvariable=self.contrast_var, width=10).grid(
+                row=3, column=1, sticky=tk.W, **padding
+            )
+            ttk.Label(edit_frame, text="1.0 = original, range -1000 to 1000").grid(
+                row=3, column=2, sticky=tk.W, **padding
+            )
+
+            ttk.Label(edit_frame, text="Saturation:").grid(row=4, column=0, sticky=tk.W, **padding)
+            self.saturation_var = tk.StringVar()
+            ttk.Entry(edit_frame, textvariable=self.saturation_var, width=10).grid(
+                row=4, column=1, sticky=tk.W, **padding
+            )
+            ttk.Label(edit_frame, text="1.0 = original, 0 = grayscale, 0 to 3").grid(
+                row=4, column=2, sticky=tk.W, **padding
+            )
+
+            ttk.Label(edit_frame, text="Gamma:").grid(row=5, column=0, sticky=tk.W, **padding)
+            self.gamma_var = tk.StringVar()
+            ttk.Entry(edit_frame, textvariable=self.gamma_var, width=10).grid(
+                row=5, column=1, sticky=tk.W, **padding
+            )
+            ttk.Label(edit_frame, text="1.0 = original, range 0.1 to 10").grid(
+                row=5, column=2, sticky=tk.W, **padding
+            )
+
+            ttk.Label(edit_frame, text="Hue:").grid(row=6, column=0, sticky=tk.W, **padding)
+            self.hue_var = tk.StringVar()
+            ttk.Entry(edit_frame, textvariable=self.hue_var, width=10).grid(
+                row=6, column=1, sticky=tk.W, **padding
+            )
+            ttk.Label(edit_frame, text="0 = original, 0 to 360 degrees").grid(
+                row=6, column=2, sticky=tk.W, **padding
+            )
+
+            self.sharpness_var = tk.BooleanVar(value=False)
+            ttk.Checkbutton(edit_frame, text="Sharpen", variable=self.sharpness_var).grid(
+                row=7, column=0, sticky=tk.W, **padding
+            )
+
+            ttk.Label(edit_frame, text="Noise:").grid(row=8, column=0, sticky=tk.W, **padding)
+            self.noise_var = tk.StringVar(value="0")
+            ttk.Entry(edit_frame, textvariable=self.noise_var, width=10).grid(
+                row=8, column=1, sticky=tk.W, **padding
+            )
+            ttk.Label(edit_frame, text="0 = off, higher = stronger grain").grid(
+                row=8, column=2, sticky=tk.W, **padding
+            )
+
+            ttk.Label(edit_frame, text="Overlay text:").grid(
+                row=9, column=0, sticky=tk.W, **padding
+            )
+            self.overlay_text_var = tk.StringVar()
+            ttk.Entry(edit_frame, textvariable=self.overlay_text_var, width=40).grid(
+                row=9, column=1, columnspan=2, sticky=tk.W, **padding
+            )
+
+            ttk.Label(edit_frame, text="Background audio:").grid(
+                row=10, column=0, sticky=tk.W, **padding
+            )
+            self.bg_audio_var = tk.StringVar()
+            ttk.Entry(edit_frame, textvariable=self.bg_audio_var, width=40).grid(
+                row=10, column=1, sticky=tk.W, **padding
+            )
+            ttk.Button(edit_frame, text="Browse", command=self._browse_bg_audio).grid(
+                row=10, column=2, sticky=tk.W, **padding
+            )
+
+            ttk.Label(edit_frame, text="BG volume:").grid(row=11, column=0, sticky=tk.W, **padding)
+            self.bg_volume_var = tk.StringVar(value="0.3")
+            ttk.Entry(edit_frame, textvariable=self.bg_volume_var, width=10).grid(
+                row=11, column=1, sticky=tk.W, **padding
+            )
+            ttk.Label(edit_frame, text="0.0 = silent, 1.0 = full").grid(
+                row=11, column=2, sticky=tk.W, **padding
+            )
+
+            edit_frame.columnconfigure(1, weight=1)
+            tab.columnconfigure(1, weight=1)
+
+        def _build_upload_tab(self, tab: ttk.Frame, padding: dict[str, int]) -> None:
+            self.yt_upload_var = tk.BooleanVar(value=False)
+            ttk.Checkbutton(
+                tab, text="Upload to YouTube after processing", variable=self.yt_upload_var
+            ).grid(row=0, column=0, columnspan=3, sticky=tk.W, **padding)
+
+            ttk.Label(tab, text="Credentials:").grid(row=1, column=0, sticky=tk.W, **padding)
+            self.yt_credentials_var = tk.StringVar(value=str(get_default_credentials_path()))
+            ttk.Entry(tab, textvariable=self.yt_credentials_var, width=50).grid(
+                row=1, column=1, **padding
+            )
+            ttk.Button(tab, text="Browse", command=self._browse_yt_credentials).grid(
+                row=1, column=2, sticky=tk.W, **padding
+            )
+
+            ttk.Label(tab, text="Title:").grid(row=2, column=0, sticky=tk.W, **padding)
             self.yt_title_var = tk.StringVar(value="{name}")
-            ttk.Entry(yt_frame, textvariable=self.yt_title_var, width=50).grid(
+            ttk.Entry(tab, textvariable=self.yt_title_var, width=50).grid(
                 row=2, column=1, columnspan=2, sticky=tk.W, **padding
             )
 
-            ttk.Label(yt_frame, text="Description:").grid(row=3, column=0, sticky=tk.W, **padding)
+            ttk.Label(tab, text="Description:").grid(row=3, column=0, sticky=tk.W, **padding)
             self.yt_description_var = tk.StringVar()
-            ttk.Entry(yt_frame, textvariable=self.yt_description_var, width=50).grid(
+            ttk.Entry(tab, textvariable=self.yt_description_var, width=50).grid(
                 row=3, column=1, columnspan=2, sticky=tk.W, **padding
             )
 
-            ttk.Label(yt_frame, text="Tags:").grid(row=4, column=0, sticky=tk.W, **padding)
+            ttk.Label(tab, text="Tags:").grid(row=4, column=0, sticky=tk.W, **padding)
             self.yt_tags_var = tk.StringVar()
-            ttk.Entry(yt_frame, textvariable=self.yt_tags_var, width=50).grid(
+            ttk.Entry(tab, textvariable=self.yt_tags_var, width=50).grid(
                 row=4, column=1, columnspan=2, sticky=tk.W, **padding
             )
 
-            ttk.Label(yt_frame, text="Privacy:").grid(row=5, column=0, sticky=tk.W, **padding)
+            ttk.Label(tab, text="Privacy:").grid(row=5, column=0, sticky=tk.W, **padding)
             self.yt_privacy_var = tk.StringVar(value="private")
             ttk.Combobox(
-                yt_frame,
+                tab,
                 textvariable=self.yt_privacy_var,
                 values=["private", "unlisted", "public"],
                 width=12,
                 state="readonly",
             ).grid(row=5, column=1, sticky=tk.W, **padding)
 
-            yt_frame.columnconfigure(1, weight=1)
+            tab.columnconfigure(1, weight=1)
 
-            # YouTube download options
-            dl_frame = ttk.LabelFrame(frame, text="YouTube download", padding=10)
-            dl_frame.grid(row=10, column=0, columnspan=3, sticky=tk.EW, pady=10)
-
-            ttk.Label(dl_frame, text="URLs (one per line):").grid(
+        def _build_download_tab(self, tab: ttk.Frame, padding: dict[str, int]) -> None:
+            ttk.Label(tab, text="URLs (one per line):").grid(
                 row=0, column=0, sticky=tk.NW, **padding
             )
-            self.dl_urls_text = tk.Text(dl_frame, width=50, height=3, wrap=tk.NONE)
+            self.dl_urls_text = tk.Text(tab, width=50, height=3, wrap=tk.NONE)
             self.dl_urls_text.grid(row=0, column=1, columnspan=2, sticky=tk.EW, **padding)
 
-            ttk.Label(dl_frame, text="Format:").grid(
-                row=1, column=0, sticky=tk.W, **padding
-            )
+            ttk.Label(tab, text="Format:").grid(row=1, column=0, sticky=tk.W, **padding)
             self.dl_format_var = tk.StringVar()
-            ttk.Entry(dl_frame, textvariable=self.dl_format_var, width=50).grid(
+            ttk.Entry(tab, textvariable=self.dl_format_var, width=50).grid(
                 row=1, column=1, columnspan=2, sticky=tk.W, **padding
             )
 
-            ttk.Label(dl_frame, text="Template:").grid(
-                row=2, column=0, sticky=tk.W, **padding
-            )
+            ttk.Label(tab, text="Template:").grid(row=2, column=0, sticky=tk.W, **padding)
             self.dl_template_var = tk.StringVar()
-            ttk.Entry(dl_frame, textvariable=self.dl_template_var, width=50).grid(
+            ttk.Entry(tab, textvariable=self.dl_template_var, width=50).grid(
                 row=2, column=1, columnspan=2, sticky=tk.W, **padding
             )
 
-            self.dl_button = ttk.Button(dl_frame, text="Download", command=self._run_download)
+            self.dl_button = ttk.Button(tab, text="Download", command=self._run_download)
             self.dl_button.grid(row=3, column=0, columnspan=3, pady=5)
 
-            dl_frame.columnconfigure(1, weight=1)
-
-            # Run button
-            self.run_button = ttk.Button(frame, text="Run", command=self._run)
-            self.run_button.grid(row=11, column=0, columnspan=3, pady=15)
-
-            # Progress
-            self.progress_var = tk.StringVar(value="Ready")
-            ttk.Label(frame, textvariable=self.progress_var, wraplength=850).grid(
-                row=12, column=0, columnspan=3, sticky=tk.W, **padding
-            )
-
-            frame.columnconfigure(1, weight=1)
+            tab.columnconfigure(1, weight=1)
 
         def _browse_input(self) -> None:
             path = filedialog.askopenfilename(filetypes=[("Video files", "*.mp4 *.mov *.mkv *.avi"), ("All files", "*.*")])
