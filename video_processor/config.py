@@ -35,6 +35,13 @@ class PipelineConfig:
 
     seg_seconds: int = 60
 
+    # Speech-to-text engine selection.
+    stt_engine: str = "vosk"
+    language: str | None = None
+    whisper_model: str = "small"
+    whisper_device: str = "auto"
+    whisper_compute_type: str | None = None
+
     burn_subs: bool = True
     subtitle_font: str = field(default_factory=get_default_font_name)
     subtitle_font_path: Path | None = field(default_factory=get_default_font_path)
@@ -76,6 +83,11 @@ class PipelineConfig:
             "output_dir": str(self.output_dir),
             "model_dir": str(self.model_dir),
             "seg_seconds": self.seg_seconds,
+            "stt_engine": self.stt_engine,
+            "language": self.language,
+            "whisper_model": self.whisper_model,
+            "whisper_device": self.whisper_device,
+            "whisper_compute_type": self.whisper_compute_type,
             "burn_subs": self.burn_subs,
             "subtitle_font": self.subtitle_font,
             "subtitle_font_path": str(self.subtitle_font_path) if self.subtitle_font_path else None,

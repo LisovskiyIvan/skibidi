@@ -107,11 +107,77 @@ if TKINTER_AVAILABLE:
             ttk.Entry(tab, textvariable=self.output_var, width=50).grid(row=1, column=1, **padding)
             ttk.Button(tab, text="Browse", command=self._browse_output).grid(row=1, column=2, **padding)
 
-            # Model
-            ttk.Label(tab, text="Vosk model:").grid(row=2, column=0, sticky=tk.W, **padding)
+            # Speech-to-text engine selection
+            stt_frame = ttk.LabelFrame(tab, text="Speech-to-text", padding=10)
+            stt_frame.grid(row=2, column=0, columnspan=3, sticky=tk.EW, pady=5)
+            stt_frame.columnconfigure(1, weight=1)
+
+            ttk.Label(stt_frame, text="Engine:").grid(row=0, column=0, sticky=tk.W, **padding)
+            self.stt_engine_var = tk.StringVar(value="vosk")
+            engine_combo = ttk.Combobox(
+                stt_frame,
+                textvariable=self.stt_engine_var,
+                values=["vosk", "whisper"],
+                state="readonly",
+                width=12,
+            )
+            engine_combo.grid(row=0, column=1, sticky=tk.W, **padding)
+            engine_combo.bind("<<ComboboxSelected>>", lambda _e: self._toggle_stt_engine())
+
+            # Vosk options (shown when engine=vosk)
+            self.vosk_frame = ttk.Frame(stt_frame)
+            self.vosk_frame.grid(row=1, column=0, columnspan=3, sticky=tk.EW, **padding)
+            self.vosk_frame.columnconfigure(1, weight=1)
+            ttk.Label(self.vosk_frame, text="Vosk model:").grid(
+                row=0, column=0, sticky=tk.W, **padding
+            )
             self.model_var = tk.StringVar(value=str(get_default_model_dir()))
-            ttk.Entry(tab, textvariable=self.model_var, width=50).grid(row=2, column=1, **padding)
-            ttk.Button(tab, text="Browse", command=self._browse_model).grid(row=2, column=2, **padding)
+            ttk.Entry(self.vosk_frame, textvariable=self.model_var, width=46).grid(
+                row=0, column=1, sticky=tk.EW, **padding
+            )
+            ttk.Button(self.vosk_frame, text="Browse", command=self._browse_model).grid(
+                row=0, column=2, **padding
+            )
+
+            # Whisper options (hidden by default)
+            self.whisper_frame = ttk.Frame(stt_frame)
+            self.whisper_frame.columnconfigure(1, weight=1)
+            ttk.Label(self.whisper_frame, text="Language:").grid(
+                row=0, column=0, sticky=tk.W, **padding
+            )
+            self.language_var = tk.StringVar()
+            ttk.Entry(self.whisper_frame, textvariable=self.language_var, width=12).grid(
+                row=0, column=1, sticky=tk.W, **padding
+            )
+            ttk.Label(self.whisper_frame, text="e.g. ru, en; blank = auto-detect").grid(
+                row=0, column=2, sticky=tk.W, **padding
+            )
+
+            ttk.Label(self.whisper_frame, text="Whisper model:").grid(
+                row=1, column=0, sticky=tk.W, **padding
+            )
+            self.whisper_model_var = tk.StringVar(value="small")
+            ttk.Combobox(
+                self.whisper_frame,
+                textvariable=self.whisper_model_var,
+                values=["tiny", "base", "small", "medium", "large-v3"],
+                state="readonly",
+                width=12,
+            ).grid(row=1, column=1, sticky=tk.W, **padding)
+
+            ttk.Label(self.whisper_frame, text="Device:").grid(
+                row=2, column=0, sticky=tk.W, **padding
+            )
+            self.whisper_device_var = tk.StringVar(value="auto")
+            ttk.Combobox(
+                self.whisper_frame,
+                textvariable=self.whisper_device_var,
+                values=["auto", "cpu", "cuda"],
+                state="readonly",
+                width=12,
+            ).grid(row=2, column=1, sticky=tk.W, **padding)
+
+            self._toggle_stt_engine()
 
             # Settings
             ttk.Label(tab, text="Segment seconds:").grid(row=3, column=0, sticky=tk.W, **padding)
@@ -335,6 +401,15 @@ if TKINTER_AVAILABLE:
             if path:
                 self.model_var.set(path)
 
+        def _toggle_stt_engine(self) -> None:
+            """Show the options relevant to the selected STT engine."""
+            if self.stt_engine_var.get() == "whisper":
+                self.vosk_frame.grid_remove()
+                self.whisper_frame.grid(row=1, column=0, columnspan=3, sticky=tk.EW)
+            else:
+                self.whisper_frame.grid_remove()
+                self.vosk_frame.grid(row=1, column=0, columnspan=3, sticky=tk.EW)
+
         def _browse_bg_audio(self) -> None:
             path = filedialog.askopenfilename(filetypes=[("Audio files", "*.mp3 *.wav *.aac *.ogg *.m4a"), ("All files", "*.*")])
             if path:
@@ -354,6 +429,10 @@ if TKINTER_AVAILABLE:
                 input=Path(self.input_var.get()),
                 output_dir=Path(self.output_var.get()),
                 model_dir=Path(self.model_var.get()),
+                stt_engine=self.stt_engine_var.get(),
+                language=self.language_var.get().strip() or None,
+                whisper_model=self.whisper_model_var.get(),
+                whisper_device=self.whisper_device_var.get(),
                 seg_seconds=self.seg_var.get(),
                 burn_subs=self.burn_var.get(),
                 subtitle_font=self.font_var.get(),

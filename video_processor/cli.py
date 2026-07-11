@@ -52,7 +52,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--model",
         type=Path,
         default=get_default_model_dir(),
-        help="Path to the Vosk model directory (default: ./vosk-model-small-ru-0.22).",
+        help="Path to the Vosk model directory (default: ./vosk-model-small-ru-0.22). "
+        "Only used when --stt-engine=vosk.",
     )
     parser.add_argument(
         "--seg-seconds",
@@ -243,6 +244,39 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to the cached OAuth token.json file (default: user config dir).",
     )
     parser.add_argument(
+        "--stt-engine",
+        type=str,
+        default="vosk",
+        choices=["vosk", "whisper"],
+        help="Speech-to-text engine (default: vosk). 'whisper' uses faster-whisper "
+        "(install with pip install -e \".[stt]\").",
+    )
+    parser.add_argument(
+        "--language",
+        type=str,
+        default=None,
+        help="Language code for Whisper, e.g. 'ru' or 'en' (default: auto-detect). "
+        "Ignored by Vosk.",
+    )
+    parser.add_argument(
+        "--whisper-model",
+        type=str,
+        default="small",
+        help="Whisper model size or path: tiny|base|small|medium|large-v3 (default: small).",
+    )
+    parser.add_argument(
+        "--whisper-device",
+        type=str,
+        default="auto",
+        help="Whisper device: auto|cpu|cuda (default: auto).",
+    )
+    parser.add_argument(
+        "--whisper-compute-type",
+        type=str,
+        default=None,
+        help="Whisper compute type override (default: float16 on cuda, int8 on cpu).",
+    )
+    parser.add_argument(
         "--yt-title",
         type=str,
         default="{name}",
@@ -308,6 +342,11 @@ def config_from_args(args: argparse.Namespace) -> PipelineConfig:
         input=args.input,
         output_dir=args.output,
         model_dir=args.model,
+        stt_engine=args.stt_engine,
+        language=args.language,
+        whisper_model=args.whisper_model,
+        whisper_device=args.whisper_device,
+        whisper_compute_type=args.whisper_compute_type,
         seg_seconds=args.seg_seconds,
         burn_subs=args.burn_subs,
         subtitle_font=args.font,

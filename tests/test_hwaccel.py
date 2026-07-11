@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -106,12 +107,11 @@ class TestEncoderArgs:
         assert "23" in args
 
 
-def _mock_proc(stdout: str, returncode: int = 0) -> object:
+def _mock_proc(stdout: str, returncode: int = 0) -> Any:
     class _Proc:
-        pass
+        def __init__(self) -> None:
+            self.stdout = stdout
+            self.stderr = ""
+            self.returncode = returncode
 
-    proc = _Proc()
-    proc.stdout = stdout
-    proc.stderr = ""
-    proc.returncode = returncode
-    return proc
+    return _Proc()

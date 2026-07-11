@@ -60,7 +60,9 @@ class TestResumeSkip:
         calls: dict[str, list[int]] = {"segment": [], "burn": []}
 
         monkeypatch.setattr("video_processor.pipeline.get_duration_sec", lambda *a, **k: 120.0)
-        monkeypatch.setattr("video_processor.pipeline.load_model", lambda *a, **k: object())
+        monkeypatch.setattr(
+            "video_processor.pipeline.create_stt_engine", lambda *a, **k: object()
+        )
         monkeypatch.setattr(
             "video_processor.pipeline.extract_segment",
             lambda *a, **k: calls["segment"].append(a[2]),
@@ -90,7 +92,9 @@ class TestParallelProcessing:
 
         processed: list[int] = []
         monkeypatch.setattr("video_processor.pipeline.get_duration_sec", lambda *a, **k: 180.0)
-        monkeypatch.setattr("video_processor.pipeline.load_model", lambda *a, **k: object())
+        monkeypatch.setattr(
+            "video_processor.pipeline.create_stt_engine", lambda *a, **k: object()
+        )
         monkeypatch.setattr(
             "video_processor.pipeline.extract_segment",
             lambda *a, **k: processed.append(a[2]),

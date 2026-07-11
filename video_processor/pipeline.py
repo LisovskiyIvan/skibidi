@@ -9,8 +9,6 @@ import threading
 from collections.abc import Callable
 from pathlib import Path
 
-from vosk import Model
-
 from .config import PipelineConfig
 from .errors import PipelineError
 from .ffmpeg import (
@@ -23,7 +21,7 @@ from .ffmpeg import (
 )
 from .progress import ProgressCallback, Step, noop_progress
 from .subtitles import generate_ass
-from .transcribe import load_model, transcribe_to_cues
+from .transcribe import SpeechToText, create_stt_engine, transcribe_to_cues
 
 # Re-export so ``from video_processor.pipeline import PipelineError`` still works.
 __all__ = ["PipelineError", "run_pipeline"]
@@ -79,7 +77,7 @@ def _segment_rng(config: PipelineConfig, idx: int) -> random.Random:
 
 def _process_segment(
     config: PipelineConfig,
-    model: Model,
+    engine: SpeechToText,
     idx: int,
     total_segments: int,
     progress_lock: threading.Lock,
@@ -117,7 +115,7 @@ def _process_segment(
             f"extracting WAV and recognizing speech for {segment_path.name}",
         )
     extract_wav(config, segment_path, wav_path)
-    cues = transcribe_to_cues(model, wav_path)
+    cues = transcribe_to_cues(engine, wav_path)
     ass_path.write_text(generate_ass(config, cues), encoding="utf-8")
 
     rng = _segment_rng(config, idx)
@@ -172,7 +170,7 @@ def run_pipeline(config: PipelineConfig, progress: ProgressCallback = noop_progr
     """
     if not config.input.exists():
         raise PipelineError(f"Missing input video: {config.input}")
-    if not config.model_dir.exists():
+    if config.stt_engine == "vosk" and not config.model_dir.exists():
         raise PipelineError(f"Missing Vosk model directory: {config.model_dir}")
 
     config.output_dir.mkdir(parents=True, exist_ok=True)
@@ -193,7 +191,7 @@ def run_pipeline(config: PipelineConfig, progress: ProgressCallback = noop_progr
         f"Duration {duration:.2f}s -> {total_segments} segments",
     )
 
-    model = load_model(config.model_dir)
+    engine = create_stt_engine(config)
     progress_lock = threading.Lock()
 
     # Determine which segments still need work (resume support).
@@ -225,7 +223,7 @@ def run_pipeline(config: PipelineConfig, progress: ProgressCallback = noop_progr
             executor.submit(
                 _process_segment,
                 config,
-                model,
+                engine,
                 idx,
                 total_segments,
                 progress_lock,

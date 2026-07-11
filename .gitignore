@@ -34,7 +34,7 @@ ENV/
 *.swp
 *.swo
 *~
-
+.env
 # Project specific - Build files
 build_windows/
 dist_windows/

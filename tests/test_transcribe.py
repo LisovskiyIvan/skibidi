@@ -56,4 +56,4 @@ class TestTranscribeToCues:
         import inspect
 
         sig = inspect.signature(transcribe_to_cues)
-        assert list(sig.parameters) == ["model", "wav_path"]
+        assert list(sig.parameters) == ["engine", "wav_path"]
