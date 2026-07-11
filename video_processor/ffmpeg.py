@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .config import PipelineConfig
 from .errors import PipelineError
+from .hwaccel import encoder_args, resolve_encoder, resolve_hwaccel
 
 # ``out_time_ms`` from ``-progress`` is actually in microseconds (an old FFmpeg
 # naming quirk). ``out_time_us`` is the same value under a honest name.
@@ -173,10 +174,11 @@ def _build_video_filter(config: PipelineConfig, ass_path: Path | None, speed: fl
         eq_params.append(f"saturation={config.saturation}")
     if config.gamma is not None:
         eq_params.append(f"gamma={config.gamma}")
-    if config.hue is not None:
-        eq_params.append(f"hue={config.hue}")
     if eq_params:
         filters.append(f"eq={':'.join(eq_params)}")
+
+    if config.hue is not None:
+        filters.append(f"hue=H={config.hue}")
 
     if config.sharpness:
         filters.append("unsharp")
@@ -212,13 +214,19 @@ def _build_ffmpeg_cmd(
     needs_complex = has_background_audio or speed != 1.0
     video_filter = _build_video_filter(config, ass_path, speed)
 
+    encoder = resolve_encoder(config.ffmpeg, config.video_encoder)
+    hwaccel = resolve_hwaccel(config.ffmpeg, config.hwaccel)
+
     cmd = [
         str(config.ffmpeg),
         "-hide_banner",
         "-y",
-        "-i",
-        str(input_path),
     ]
+    if hwaccel is not None and hwaccel != "none":
+        cmd.extend(["-hwaccel", hwaccel])
+
+    cmd.extend(["-i", str(input_path)])
+
     if has_background_audio:
         # Loop the music so it covers the whole video.
         cmd.extend(["-stream_loop", "-1", "-i", str(config.background_audio)])
@@ -252,17 +260,16 @@ def _build_ffmpeg_cmd(
         cmd.extend(["-vf", video_filter, "-c:a", "copy"])
 
     # Structured progress key=value lines on stderr, parsed for live percent.
-    cmd.extend([
-        "-c:v",
-        "libx264",
-        "-preset",
-        "fast",
-        "-crf",
-        "23",
-        "-progress",
-        "pipe:2",
-        str(out_path),
-    ])
+    cmd.extend(
+        [
+            "-c:v",
+            encoder,
+            *encoder_args(encoder, config.encoder_preset, config.crf),
+            "-progress",
+            "pipe:2",
+            str(out_path),
+        ]
+    )
     return cmd
 
 

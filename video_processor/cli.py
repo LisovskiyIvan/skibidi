@@ -6,7 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from .config import PipelineConfig
+from .config import PipelineConfig, _default_workers
 from .errors import PipelineError
 from .pipeline import run_pipeline
 from .progress import ProgressCallback, Step, default_message
@@ -187,6 +187,36 @@ def build_parser() -> argparse.ArgumentParser:
         default=0.3,
         help="Background audio volume from 0.0 (silent) to 1.0 (full, default: 0.3).",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Parallel segment workers (default: CPU count / 2, capped at 4).",
+    )
+    parser.add_argument(
+        "--hwaccel",
+        type=str,
+        default="auto",
+        help="Hardware acceleration method: auto | none | cuda | qsv | d3d11va | videotoolbox (default: auto).",
+    )
+    parser.add_argument(
+        "--video-encoder",
+        type=str,
+        default="auto",
+        help="Video encoder: auto | libx264 | h264_nvenc | h264_qsv | h264_amf | h264_videotoolbox (default: auto).",
+    )
+    parser.add_argument(
+        "--encoder-preset",
+        type=str,
+        default=None,
+        help="Encoder preset override (default depends on encoder, e.g. veryfast for libx264, p5 for nvenc).",
+    )
+    parser.add_argument(
+        "--crf",
+        type=int,
+        default=23,
+        help="Quality target: CRF for libx264, CQ for NVENC, global_quality for QSV (default: 23).",
+    )
     # YouTube upload options
     parser.add_argument(
         "--upload",
@@ -299,6 +329,11 @@ def config_from_args(args: argparse.Namespace) -> PipelineConfig:
         overlay_text=args.overlay_text,
         background_audio=args.bg_audio,
         background_audio_volume=args.bg_volume,
+        workers=args.workers if args.workers is not None else _default_workers(),
+        hwaccel=args.hwaccel,
+        video_encoder=args.video_encoder,
+        encoder_preset=args.encoder_preset,
+        crf=args.crf,
     )
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,13 @@ from .resources import (
     get_ffmpeg_path,
     get_ffprobe_path,
 )
+
+
+def _default_workers() -> int:
+    """Default worker count: balance Vosk (CPU-bound) and FFmpeg (CPU/GPU-bound)."""
+    cpus = os.cpu_count() or 4
+    # Avoid overwhelming a software encoder; with hardware encoding users can raise.
+    return min(4, max(1, cpus // 2))
 
 
 @dataclass
@@ -52,6 +60,13 @@ class PipelineConfig:
     background_audio: Path | None = None
     background_audio_volume: float = 0.3
 
+    # Acceleration and parallelism
+    hwaccel: str = "auto"
+    video_encoder: str = "auto"
+    encoder_preset: str | None = None
+    crf: int = 23
+    workers: int = field(default_factory=_default_workers)
+
     ffmpeg: Path | str = field(default_factory=get_ffmpeg_path)
     ffprobe: Path | str = field(default_factory=get_ffprobe_path)
 
@@ -81,6 +96,11 @@ class PipelineConfig:
             "overlay_text": self.overlay_text,
             "background_audio": str(self.background_audio) if self.background_audio else None,
             "background_audio_volume": self.background_audio_volume,
+            "hwaccel": self.hwaccel,
+            "video_encoder": self.video_encoder,
+            "encoder_preset": self.encoder_preset,
+            "crf": self.crf,
+            "workers": self.workers,
             "ffmpeg": str(self.ffmpeg),
             "ffprobe": str(self.ffprobe),
         }

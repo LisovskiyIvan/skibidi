@@ -9,7 +9,8 @@ import pytest
 
 from video_processor.config import PipelineConfig
 from video_processor.errors import PipelineError
-from video_processor.pipeline import run_pipeline
+from video_processor.ffmpeg import _resolve_speed
+from video_processor.pipeline import _segment_rng, run_pipeline
 
 
 def _cfg(input_path: Path, output_dir: Path, **overrides: Any) -> PipelineConfig:
@@ -77,3 +78,36 @@ class TestResumeSkip:
         assert calls["segment"] == [60]
         assert calls["burn"] != []
         assert any("skip existing" in e for e in events)
+
+
+class TestParallelProcessing:
+    def test_workers_process_multiple_segments(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        video = tmp_path / "video.mp4"
+        video.write_bytes(b"\x00")
+        out = tmp_path / "out"
+
+        processed: list[int] = []
+        monkeypatch.setattr("video_processor.pipeline.get_duration_sec", lambda *a, **k: 180.0)
+        monkeypatch.setattr("video_processor.pipeline.load_model", lambda *a, **k: object())
+        monkeypatch.setattr(
+            "video_processor.pipeline.extract_segment",
+            lambda *a, **k: processed.append(a[2]),
+        )
+        monkeypatch.setattr("video_processor.pipeline.extract_wav", lambda *a, **k: None)
+        monkeypatch.setattr("video_processor.pipeline.transcribe_to_cues", lambda *a, **k: [])
+        monkeypatch.setattr("video_processor.pipeline.burn_subs", lambda *a, **k: None)
+
+        run_pipeline(_cfg(video, out, workers=2))
+
+        assert sorted(processed) == [0, 60, 120]
+
+    def test_seed_determinism_is_preserved_across_workers(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Per-segment RNG must yield the same speed regardless of worker order."""
+        cfg = _cfg(tmp_path / "video.mp4", tmp_path / "out1", speed="0.95-1.05", seed=42)
+        speeds_a = [_resolve_speed(cfg.speed, _segment_rng(cfg, idx)) for idx in range(5)]
+        speeds_b = [_resolve_speed(cfg.speed, _segment_rng(cfg, idx)) for idx in range(5)]
+        assert speeds_a == speeds_b
