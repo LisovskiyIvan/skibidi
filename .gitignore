@@ -1,6 +1,6 @@
 assets/*
 out/*
-
+.mimocode
 # Python
 __pycache__/
 *.py[cod]
