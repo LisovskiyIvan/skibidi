@@ -84,9 +84,10 @@ class TestBuildVideoFilter:
         font = tmp_path / "Oswald-Bold.ttf"
         font.write_bytes(b"\x00")
         cfg = _config(subtitle_font_path=font)
-        filt = _build_video_filter(cfg, Path("clip.ass"), 1.0)
-        assert "subtitles=clip.ass" in filt
-        assert f"fontsdir={tmp_path.as_posix()}" in filt
+        ass = tmp_path / "clip.ass"
+        filt = _build_video_filter(cfg, ass, 1.0)
+        assert f"subtitles={ass.resolve().as_posix()}" in filt
+        assert f"fontsdir={tmp_path.resolve().as_posix()}" in filt
 
 
 class TestBuildFfmpegCmd:

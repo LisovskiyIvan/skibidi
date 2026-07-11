@@ -60,6 +60,12 @@ class TestBuildAssHeader:
         assert "MyFont" in style_line
         assert ",42," in style_line
 
+    def test_includes_play_resolution(self) -> None:
+        header = build_ass_header(_config())
+        joined = "\n".join(header)
+        assert "PlayResX: 1080" in joined
+        assert "PlayResY: 1920" in joined
+
 
 class TestGenerateAss:
     def test_empty_cues_produces_only_header(self) -> None:
@@ -79,3 +85,19 @@ class TestGenerateAss:
         cues: list[Cue] = [{"start": 0.0, "end": 1.0, "text": "{bad}"}]
         out = generate_ass(_config(), cues)
         assert "\\{bad\\}" in out
+
+    def test_cue_line_field_count_matches_format(self) -> None:
+        cues: list[Cue] = [{"start": 1.0, "end": 2.5, "text": "hi there"}]
+        out = generate_ass(_config(), cues)
+        lines = out.splitlines()
+        events_idx = lines.index("[Events]")
+        format_line = next(
+            line for line in lines[events_idx:] if line.startswith("Format: Layer, Start, End")
+        )
+        dialogue_line = next(
+            line for line in lines[events_idx:] if line.startswith("Dialogue:")
+        )
+        # Count commas only in the field prefix, before the override block starts with '{'.
+        dialogue_prefix = dialogue_line.split("{", 1)[0]
+        assert format_line.count(",") == dialogue_prefix.count(",")
+        assert dialogue_prefix.count(",") == 9

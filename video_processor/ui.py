@@ -115,27 +115,32 @@ if TKINTER_AVAILABLE:
             ttk.Label(edit_frame, text="Speed:").grid(row=1, column=0, sticky=tk.W, **padding)
             self.speed_var = tk.StringVar(value="0.95-1.05")
             ttk.Entry(edit_frame, textvariable=self.speed_var, width=20).grid(row=1, column=1, sticky=tk.W, **padding)
-            ttk.Label(edit_frame, text="e.g. 1.0 or 0.95-1.05").grid(row=1, column=2, sticky=tk.W, **padding)
+            ttk.Label(edit_frame, text="e.g. 1.0 or 0.95-1.05 (1.0 = original)").grid(row=1, column=2, sticky=tk.W, **padding)
 
             ttk.Label(edit_frame, text="Brightness:").grid(row=2, column=0, sticky=tk.W, **padding)
             self.brightness_var = tk.StringVar()
             ttk.Entry(edit_frame, textvariable=self.brightness_var, width=10).grid(row=2, column=1, sticky=tk.W, **padding)
+            ttk.Label(edit_frame, text="0 = original, -1.0 to 1.0").grid(row=2, column=2, sticky=tk.W, **padding)
 
             ttk.Label(edit_frame, text="Contrast:").grid(row=3, column=0, sticky=tk.W, **padding)
             self.contrast_var = tk.StringVar()
             ttk.Entry(edit_frame, textvariable=self.contrast_var, width=10).grid(row=3, column=1, sticky=tk.W, **padding)
+            ttk.Label(edit_frame, text="1.0 = original, range -1000 to 1000").grid(row=3, column=2, sticky=tk.W, **padding)
 
             ttk.Label(edit_frame, text="Saturation:").grid(row=4, column=0, sticky=tk.W, **padding)
             self.saturation_var = tk.StringVar()
             ttk.Entry(edit_frame, textvariable=self.saturation_var, width=10).grid(row=4, column=1, sticky=tk.W, **padding)
+            ttk.Label(edit_frame, text="1.0 = original, 0 = grayscale, 0 to 3").grid(row=4, column=2, sticky=tk.W, **padding)
 
             ttk.Label(edit_frame, text="Gamma:").grid(row=5, column=0, sticky=tk.W, **padding)
             self.gamma_var = tk.StringVar()
             ttk.Entry(edit_frame, textvariable=self.gamma_var, width=10).grid(row=5, column=1, sticky=tk.W, **padding)
+            ttk.Label(edit_frame, text="1.0 = original, range 0.1 to 10").grid(row=5, column=2, sticky=tk.W, **padding)
 
             ttk.Label(edit_frame, text="Hue:").grid(row=6, column=0, sticky=tk.W, **padding)
             self.hue_var = tk.StringVar()
             ttk.Entry(edit_frame, textvariable=self.hue_var, width=10).grid(row=6, column=1, sticky=tk.W, **padding)
+            ttk.Label(edit_frame, text="0 = original, 0 to 360 degrees").grid(row=6, column=2, sticky=tk.W, **padding)
 
             self.sharpness_var = tk.BooleanVar(value=False)
             ttk.Checkbutton(edit_frame, text="Sharpen", variable=self.sharpness_var).grid(row=7, column=0, sticky=tk.W, **padding)
@@ -143,6 +148,7 @@ if TKINTER_AVAILABLE:
             ttk.Label(edit_frame, text="Noise:").grid(row=8, column=0, sticky=tk.W, **padding)
             self.noise_var = tk.StringVar(value="0")
             ttk.Entry(edit_frame, textvariable=self.noise_var, width=10).grid(row=8, column=1, sticky=tk.W, **padding)
+            ttk.Label(edit_frame, text="0 = off, higher = stronger grain").grid(row=8, column=2, sticky=tk.W, **padding)
 
             ttk.Label(edit_frame, text="Overlay text:").grid(row=9, column=0, sticky=tk.W, **padding)
             self.overlay_text_var = tk.StringVar()
@@ -156,6 +162,7 @@ if TKINTER_AVAILABLE:
             ttk.Label(edit_frame, text="BG volume:").grid(row=11, column=0, sticky=tk.W, **padding)
             self.bg_volume_var = tk.StringVar(value="0.3")
             ttk.Entry(edit_frame, textvariable=self.bg_volume_var, width=10).grid(row=11, column=1, sticky=tk.W, **padding)
+            ttk.Label(edit_frame, text="0.0 = silent, 1.0 = full").grid(row=11, column=2, sticky=tk.W, **padding)
 
             edit_frame.columnconfigure(1, weight=1)
 

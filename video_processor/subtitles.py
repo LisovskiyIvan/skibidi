@@ -33,6 +33,8 @@ def build_ass_header(config: PipelineConfig) -> list[str]:
         "[Script Info]",
         "Title: Auto-generated subtitles",
         "ScriptType: v4.00+",
+        "PlayResX: 1080",
+        "PlayResY: 1920",
         "",
         "[V4+ Styles]",
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
@@ -52,7 +54,7 @@ def generate_ass(config: PipelineConfig, cues: list[Cue]) -> str:
         text = _escape_ass_text(cue["text"])
         # Center horizontally at x=540, vertically at the configured Y position.
         lines.append(
-            f"Dialogue: 0,{start},{end},Default,,0,0,0,"
+            f"Dialogue: 0,{start},{end},Default,,0,0,0,,"
             f"{{\\pos(540,{config.subtitle_pos_y})\\fad({config.fade_in_ms},{config.fade_out_ms})}}"
             f"{text}"
         )

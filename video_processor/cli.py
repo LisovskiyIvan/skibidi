@@ -80,13 +80,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--font-size",
         type=int,
         default=100,
-        help="Subtitle font size (default: 100).",
+        help="Subtitle font size in pixels for 1080x1920 output (default: 100).",
     )
     parser.add_argument(
         "--pos-y",
         type=int,
         default=1500,
-        help="Vertical subtitle position for 9:16 output (default: 1500).",
+        help="Vertical subtitle position on the 1080x1920 canvas (default: 1500).",
     )
     parser.add_argument(
         "--fade-in",
@@ -123,43 +123,49 @@ def build_parser() -> argparse.ArgumentParser:
         "--brightness",
         type=float,
         default=None,
-        help="Brightness adjustment (FFmpeg eq).",
+        help="Brightness adjustment in FFmpeg eq units (default: no change). "
+        "0 = original, negative = darker, positive = brighter (range -1.0 to 1.0).",
     )
     parser.add_argument(
         "--contrast",
         type=float,
         default=None,
-        help="Contrast adjustment (FFmpeg eq).",
+        help="Contrast adjustment in FFmpeg eq units (default: no change). "
+        "1.0 = original, >1 stronger contrast, <1 weaker (range -1000 to 1000).",
     )
     parser.add_argument(
         "--saturation",
         type=float,
         default=None,
-        help="Saturation adjustment (FFmpeg eq).",
+        help="Saturation adjustment in FFmpeg eq units (default: no change). "
+        "1.0 = original, 0 = grayscale, >1 more vivid colors (range 0 to 3).",
     )
     parser.add_argument(
         "--gamma",
         type=float,
         default=None,
-        help="Gamma adjustment (FFmpeg eq).",
+        help="Gamma adjustment in FFmpeg eq units (default: no change). "
+        "1.0 = original, <1 lighter shadows, >1 darker (range 0.1 to 10).",
     )
     parser.add_argument(
         "--hue",
         type=float,
         default=None,
-        help="Hue adjustment (FFmpeg eq).",
+        help="Hue shift in degrees (default: no change). "
+        "0 = original, 180 = inverted colors (range 0 to 360).",
     )
     parser.add_argument(
         "--sharpness",
         action=argparse.BooleanOptionalAction,
         default=False,
-        help="Apply subtle sharpening (default: false).",
+        help="Apply subtle unsharp sharpening (default: false).",
     )
     parser.add_argument(
         "--noise",
         type=int,
         default=0,
-        help="Adversarial noise intensity (0 = off).",
+        help="Adversarial noise intensity (default: 0 = off). "
+        "Higher values add stronger grain to the video.",
     )
     parser.add_argument(
         "--overlay-text",
@@ -177,7 +183,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--bg-volume",
         type=float,
         default=0.3,
-        help="Background audio volume (default: 0.3).",
+        help="Background audio volume from 0.0 (silent) to 1.0 (full, default: 0.3).",
     )
     # YouTube upload options
     parser.add_argument(

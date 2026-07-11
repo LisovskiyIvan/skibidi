@@ -158,9 +158,9 @@ def _build_video_filter(config: PipelineConfig, ass_path: Path | None, speed: fl
         filters.append("hflip")
 
     if ass_path is not None:
-        sub = f"subtitles={ass_path.as_posix()}"
+        sub = f"subtitles={ass_path.resolve().as_posix()}"
         if config.subtitle_font_path and config.subtitle_font_path.exists():
-            font_dir = config.subtitle_font_path.parent.as_posix()
+            font_dir = config.subtitle_font_path.parent.resolve().as_posix()
             sub = f"{sub}:fontsdir={font_dir}"
         filters.append(sub)
 
