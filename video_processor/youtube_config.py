@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from threading import Event
 
 from .resources import get_default_credentials_path, get_default_token_path
 
@@ -38,6 +39,13 @@ class YouTubeUploadConfig:
     notify_subscribers: bool = False
 
     chunksize: int = 10 * 1024 * 1024  # 10 MB resumable chunks
+    max_retries: int = 5
+    retry_backoff_seconds: float = 1.0
+    max_retry_backoff_seconds: float = 16.0
+
+    # When set, successful uploads are reused on a matching rerun.
+    ledger_path: Path | None = None
+    cancel_event: Event | None = field(default=None, repr=False, compare=False)
 
     scopes: list[str] = field(
         default_factory=lambda: ["https://www.googleapis.com/auth/youtube.upload"]

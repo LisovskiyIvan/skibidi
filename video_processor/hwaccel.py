@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
+
+from .errors import PipelineError
+from .runtime import run_process
 
 # Preferred order: NVIDIA > Intel QSV > AMD > macOS VideoToolbox > software.
 _ENCODER_PRIORITY: Final[tuple[str, ...]] = (
@@ -20,18 +23,37 @@ _ENCODER_PRIORITY: Final[tuple[str, ...]] = (
 _cache: dict[str, tuple[str, list[str]]] = {}
 
 
+@dataclass(frozen=True)
+class Acceleration:
+    """A coherent encoder and input hardware acceleration selection."""
+
+    encoder: str
+    hwaccel: str | None
+    auto_hardware: bool
+
+
+def _hwaccel_for_encoder(encoder: str) -> str | None:
+    return {
+        "h264_nvenc": "cuda",
+        "h264_qsv": "qsv",
+        "h264_amf": "d3d11va",
+        "h264_videotoolbox": "videotoolbox",
+    }.get(encoder)
+
+
 def _list_encoders(ffmpeg: Path | str) -> list[str]:
     """Return the list of available H.264 encoders from ``ffmpeg -encoders``."""
-    proc = subprocess.run(
-        [str(ffmpeg), "-hide_banner", "-encoders"],
-        capture_output=True,
-        text=True,
-    )
-    if proc.returncode != 0:
+    try:
+        stdout = run_process(
+            [str(ffmpeg), "-hide_banner", "-nostdin", "-encoders"],
+            timeout=15,
+            capture_stdout=True,
+        ).stdout
+    except PipelineError:
         return []
 
     encoders: list[str] = []
-    for line in proc.stdout.splitlines():
+    for line in stdout.splitlines():
         if "H.264" not in line:
             continue
         parts = line.strip().split()
@@ -81,20 +103,37 @@ def resolve_hwaccel(ffmpeg: Path | str, explicit: str | None) -> str | None:
     """
     if explicit is None or explicit == "auto":
         encoder = _probe(ffmpeg)[0]
-        mapping = {
-            "h264_nvenc": "cuda",
-            "h264_qsv": "qsv",
-            "h264_amf": "d3d11va",
-            "h264_videotoolbox": "videotoolbox",
-            "libx264": "auto",
-        }
-        return mapping.get(encoder, "auto")
+        return _hwaccel_for_encoder(encoder)
     if explicit == "none":
         return None
     return explicit
 
 
-def encoder_args(encoder: str, preset: str | None, quality: int) -> list[str]:
+def resolve_acceleration(
+    ffmpeg: Path | str,
+    encoder: str | None,
+    hwaccel: str | None,
+) -> Acceleration:
+    """Resolve encoder and decoder acceleration as one coherent choice."""
+    resolved_encoder = resolve_encoder(ffmpeg, encoder)
+    resolved_hwaccel = (
+        _hwaccel_for_encoder(resolved_encoder)
+        if hwaccel is None or hwaccel == "auto"
+        else resolve_hwaccel(ffmpeg, hwaccel)
+    )
+    return Acceleration(
+        encoder=resolved_encoder,
+        hwaccel=resolved_hwaccel,
+        auto_hardware=(encoder is None or encoder == "auto") and resolved_encoder != "libx264",
+    )
+
+
+def encoder_args(
+    encoder: str,
+    preset: str | None,
+    quality: int,
+    threads: int | None = None,
+) -> list[str]:
     """Return encoder-specific FFmpeg output arguments.
 
     The returned list is ready to extend into the command after ``-c:v``.
@@ -149,5 +188,5 @@ def encoder_args(encoder: str, preset: str | None, quality: int) -> list[str]:
         "-crf",
         str(quality),
         "-threads",
-        "0",
+        str(threads or 1),
     ]

@@ -17,3 +17,11 @@ class PipelineError(Exception):
     """
 
     pass
+
+
+class ProcessTimeoutError(PipelineError):
+    """Raised when an external command exceeds its configured deadline."""
+
+
+class ProcessCancelledError(PipelineError):
+    """Raised when cooperative cancellation stops an external command."""

@@ -28,6 +28,4 @@ def ensure_optional_dep(available: bool, dep_name: str, install_hint: str) -> No
         ``pip install -e '.[youtube]'``.
     """
     if not available:
-        raise PipelineError(
-            f"{dep_name} is not installed. Install with: {install_hint}"
-        )
+        raise PipelineError(f"{dep_name} is not installed. Install with: {install_hint}")

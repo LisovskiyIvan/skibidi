@@ -1,15 +1,42 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "video-transcription"
 version = "0.1.0"
-description = "Vosk-based video transcription pipeline"
+description = "Video segmentation, speech transcription, subtitle, and publishing pipeline"
+readme = "README.md"
+authors = [
+    { name = "Lisovskii Ivan" },
+]
+license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES", "VOSK_MODEL_LICENSE"]
 requires-python = ">=3.9"
+keywords = ["ffmpeg", "subtitles", "transcription", "video", "vosk"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Environment :: Win32 (MS Windows)",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Multimedia :: Video :: Conversion",
+]
 dependencies = [
     "vosk>=0.3.45",
 ]
+
+[project.urls]
+Homepage = "https://github.com/LisovskiyIvan/skibidi"
+Repository = "https://github.com/LisovskiyIvan/skibidi"
+Issues = "https://github.com/LisovskiyIvan/skibidi/issues"
 
 [project.optional-dependencies]
 youtube = [
@@ -25,15 +52,35 @@ stt = [
 ]
 # CUDA runtime libraries for faster-whisper on NVIDIA GPUs. Optional and large
 # (~1.3 GB); CPU-only users should NOT install this. Install with:
-#   pip install -e ".[stt,stt-cuda]"
+#   uv sync --extra stt --extra stt-cuda
 stt-cuda = [
     "nvidia-cublas-cu12",
     "nvidia-cudnn-cu12",
+]
+gui = [
+    "google-api-python-client>=2.100",
+    "google-auth-oauthlib>=1.1",
+    "google-auth-httplib2>=0.2",
+    "yt-dlp>=2024.4.9",
+    "faster-whisper>=1.0",
+]
+build = [
+    "pyinstaller>=6.14,<7",
+    "wheel>=0.45",
+]
+windows = [
+    "pyinstaller>=6.14,<7",
+    "google-api-python-client>=2.100",
+    "google-auth-oauthlib>=1.1",
+    "google-auth-httplib2>=0.2",
+    "yt-dlp>=2024.4.9",
+    "faster-whisper>=1.0",
 ]
 dev = [
     "pytest>=8",
     "mypy>=1.10",
     "ruff>=0.5",
+    "tomli>=2",
 ]
 
 [project.scripts]
@@ -41,6 +88,9 @@ video-processor = "video_processor.__main__:main"
 
 [tool.setuptools]
 packages = ["video_processor"]
+
+[tool.setuptools.package-data]
+video_processor = ["py.typed"]
 
 [tool.ruff]
 line-length = 100
@@ -96,5 +146,3 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
-
-

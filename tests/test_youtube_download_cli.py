@@ -41,14 +41,10 @@ class TestYouTubeDownloadConfigFromArgs:
 
 
 class TestDownloadOnlyCli:
-    def test_downloads_single_url(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_downloads_single_url(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         captured: list[YouTubeDownloadConfig] = []
 
-        def fake_download(
-            config: YouTubeDownloadConfig, progress: Any = None
-        ) -> list[Path]:
+        def fake_download(config: YouTubeDownloadConfig, progress: Any = None) -> list[Path]:
             captured.append(config)
             return [tmp_path / "video.mp4"]
 
@@ -69,14 +65,10 @@ class TestDownloadOnlyCli:
         assert cfg.urls == ["https://youtu.be/abc"]
         assert cfg.output_dir == tmp_path
 
-    def test_downloads_multiple_urls(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_downloads_multiple_urls(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         captured: list[YouTubeDownloadConfig] = []
 
-        def fake_download(
-            config: YouTubeDownloadConfig, progress: Any = None
-        ) -> list[Path]:
+        def fake_download(config: YouTubeDownloadConfig, progress: Any = None) -> list[Path]:
             captured.append(config)
             return [tmp_path / "a.mp4", tmp_path / "b.mp4"]
 
@@ -111,4 +103,9 @@ class TestDownloadOnlyCli:
                     str(tmp_path),
                 ]
             )
+        assert exc_info.value.code == 2
+
+    def test_download_rejects_upload_flag(self) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            run_cli(["--download", "https://youtu.be/abc", "--upload"])
         assert exc_info.value.code == 2

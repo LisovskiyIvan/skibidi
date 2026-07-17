@@ -94,9 +94,7 @@ class TestGenerateAss:
         format_line = next(
             line for line in lines[events_idx:] if line.startswith("Format: Layer, Start, End")
         )
-        dialogue_line = next(
-            line for line in lines[events_idx:] if line.startswith("Dialogue:")
-        )
+        dialogue_line = next(line for line in lines[events_idx:] if line.startswith("Dialogue:"))
         # Count commas only in the field prefix, before the override block starts with '{'.
         dialogue_prefix = dialogue_line.split("{", 1)[0]
         assert format_line.count(",") == dialogue_prefix.count(",")

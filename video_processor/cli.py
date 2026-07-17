@@ -10,7 +10,7 @@ from typing import TypeVar, overload
 
 from .config import PipelineConfig, _default_workers
 from .errors import PipelineError
-from .paths import collect_upload_paths
+from .paths import collect_upload_paths, sort_clip_paths
 from .pipeline import run_pipeline
 from .progress import ProgressCallback, Step, default_message
 from .resources import (
@@ -18,6 +18,7 @@ from .resources import (
     get_default_font_path,
     get_default_model_dir,
     get_default_token_path,
+    get_default_upload_ledger_path,
 )
 from .youtube import upload_to_youtube
 from .youtube_config import YouTubeUploadConfig
@@ -28,6 +29,7 @@ from .youtube_download_config import YouTubeDownloadConfig
 def _create_progress_callback() -> ProgressCallback:
     def callback(step: Step, current: int, total: int, message: str) -> None:
         print(default_message(step, current, total, message))
+
     return callback
 
 
@@ -55,7 +57,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--model",
         type=Path,
         default=get_default_model_dir(),
-        help="Path to the Vosk model directory (default: ./vosk-model-small-ru-0.22). "
+        help="Path to the Vosk model directory (default: bundled/source model). "
         "Only used when --stt-engine=vosk.",
     )
     parser.add_argument(
@@ -247,12 +249,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to the cached OAuth token.json file (default: user config dir).",
     )
     parser.add_argument(
+        "--yt-ledger",
+        type=Path,
+        default=get_default_upload_ledger_path(),
+        help="Path to the completed-upload ledger (default: user config dir).",
+    )
+    parser.add_argument(
         "--stt-engine",
         type=str,
         default="vosk",
         choices=["vosk", "whisper"],
         help="Speech-to-text engine (default: vosk). 'whisper' uses faster-whisper "
-        "(install with pip install -e \".[stt]\").",
+        '(install with pip install -e ".[stt]").',
     )
     parser.add_argument(
         "--language",
@@ -335,7 +343,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--dl-template",
         type=str,
         default=None,
-        help="yt-dlp output template (default: %%(title).100s.%%(ext)s).",
+        help="yt-dlp output template (default includes title and video ID).",
     )
     return parser
 
@@ -395,6 +403,7 @@ def youtube_config_from_args(
         category_id=args.yt_category,
         privacy_status=args.yt_privacy,
         notify_subscribers=args.yt_notify,
+        ledger_path=getattr(args, "yt_ledger", None),
     )
 
 
@@ -473,6 +482,8 @@ def run_cli(argv: list[str] | None = None) -> int:
             parser.error("--download cannot be combined with -i/--input")
         if args.upload_only:
             parser.error("--download cannot be combined with --upload-only")
+        if args.upload:
+            parser.error("--download cannot be combined with --upload")
         dl_config = youtube_download_config_from_args(args)
         download_result: list[Path] | int = _run_or_report(
             lambda: _do_download(dl_config, _create_progress_callback())
@@ -482,9 +493,11 @@ def run_cli(argv: list[str] | None = None) -> int:
     if args.upload_only:
         if args.input:
             parser.error("--upload-only cannot be combined with -i/--input")
+        if args.upload:
+            parser.error("--upload-only cannot be combined with --upload")
         upload_path: Path = args.upload_only
         if upload_path.is_dir():
-            video_paths = sorted(upload_path.glob("*.mp4"))
+            video_paths = sort_clip_paths(list(upload_path.glob("*.mp4")))
         else:
             video_paths = [upload_path]
         if not video_paths:
@@ -523,5 +536,6 @@ def main() -> int:
     # If there are no user arguments, launch the GUI. Otherwise run the CLI.
     if len(sys.argv) == 1:
         from .ui import run_gui
+
         return run_gui()
     return run_cli()

@@ -43,7 +43,9 @@ class TestApplyEnvFile:
         assert os.environ["FOO"] == "1"
         assert "BAR" not in os.environ
 
-    def test_does_not_override_existing(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_does_not_override_existing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setenv("FOO", "from-shell")
         env = tmp_path / ".env"
         env.write_text("FOO=from-file\n", encoding="utf-8")
@@ -62,7 +64,9 @@ class TestLoadEnvFile:
         )
         assert load_env_file() is None
 
-    def test_loads_from_cwd(self, tmp_path: Path, _clean_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_loads_from_cwd(
+        self, tmp_path: Path, _clean_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         env = tmp_path / ".env"
         env.write_text("BAR=baz\n", encoding="utf-8")
         monkeypatch.setattr(

@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from video_processor.config import PipelineConfig
-from video_processor.errors import PipelineError
+from video_processor.errors import PipelineError, ProcessCancelledError
 from video_processor.transcribe import SpeechToText, create_stt_engine
 
 
@@ -19,6 +19,7 @@ def _cfg(**overrides: Any) -> PipelineConfig:
     base: dict[str, Any] = {"input": Path("in.mp4")}
     base.update(overrides)
     return PipelineConfig(**base)
+
 
 class TestCreateEngine:
     def test_unknown_engine_raises(self) -> None:
@@ -69,9 +70,7 @@ class TestWhisperDeviceDetection:
                 self.device = device
 
         cfg = _cfg(stt_engine="whisper", whisper_device="cuda", whisper_model="small")
-        with patch(
-            "video_processor.stt_whisper._preload_cuda_libraries"
-        ) as mock_preload:
+        with patch("video_processor.stt_whisper._preload_cuda_libraries") as mock_preload:
             _build_whisper_model(FakeModel, cfg, "cuda", fallback=True)
         mock_preload.assert_called_once()
 
@@ -83,9 +82,7 @@ class TestWhisperDeviceDetection:
                 self.device = device
 
         cfg = _cfg(stt_engine="whisper", whisper_device="cpu", whisper_model="small")
-        with patch(
-            "video_processor.stt_whisper._preload_cuda_libraries"
-        ) as mock_preload:
+        with patch("video_processor.stt_whisper._preload_cuda_libraries") as mock_preload:
             _build_whisper_model(FakeModel, cfg, "cpu", fallback=True)
         mock_preload.assert_not_called()
 
@@ -119,6 +116,19 @@ class TestWhisperDeviceDetection:
 
 
 class TestWhisperTranscribe:
+    def test_cancellable_transcribe_stops_before_model_call(self) -> None:
+        import threading
+
+        from video_processor.stt_whisper import WhisperEngine
+
+        model = MagicMock()
+        cancelled = threading.Event()
+        cancelled.set()
+
+        with pytest.raises(ProcessCancelledError, match="cancelled"):
+            WhisperEngine(model, language=None).transcribe_cancellable(Path("clip.wav"), cancelled)
+        model.transcribe.assert_not_called()
+
     def test_transcribe_maps_words(self) -> None:
         from video_processor.stt_whisper import WhisperEngine
 
@@ -155,7 +165,9 @@ class TestWhisperTranscribe:
 
         import threading
 
-        threads = [threading.Thread(target=engine.transcribe, args=(Path("c.wav"),)) for _ in range(4)]
+        threads = [
+            threading.Thread(target=engine.transcribe, args=(Path("c.wav"),)) for _ in range(4)
+        ]
         for t in threads:
             t.start()
         for t in threads:
@@ -205,6 +217,32 @@ class TestWhisperCudaFallback:
         cfg = _cfg(stt_engine="whisper", whisper_device="cuda", whisper_model="small")
         _model, device = _build_whisper_model(FakeModel, cfg, "cuda", fallback=True)
         assert device == "cuda"
+
+    def test_runtime_cuda_failure_retries_once_on_cpu(self) -> None:
+        from video_processor.stt_whisper import WhisperEngine
+
+        cuda_model = MagicMock()
+
+        def failing_segments() -> Any:
+            raise RuntimeError("CUDA out of memory")
+            yield  # pragma: no cover
+
+        cuda_model.transcribe.return_value = (failing_segments(), MagicMock())
+        cpu_model = MagicMock()
+        cpu_model.transcribe.return_value = ([], MagicMock())
+        factory = MagicMock(return_value=cpu_model)
+        engine = WhisperEngine(
+            cuda_model,
+            None,
+            device="cuda",
+            cpu_model_factory=factory,
+        )
+
+        with pytest.warns(UserWarning, match="CUDA inference failed"):
+            assert engine.transcribe(Path("clip.wav")) == []
+
+        factory.assert_called_once_with()
+        cpu_model.transcribe.assert_called_once()
 
 
 def _install_fake_faster_whisper() -> Any:

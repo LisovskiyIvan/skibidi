@@ -39,6 +39,7 @@ ENV/
 build_windows/
 dist_windows/
 *.spec
+!VideoProcessor.spec
 build_patch.py
 pipeline_vosk_build.py
 

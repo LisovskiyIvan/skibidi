@@ -1,268 +1,196 @@
-# Build executable for Windows
-# Run: python build_windows.py
-# Or use GitHub Actions (see .github/workflows/build.yml)
+"""Prepare verified assets and build the Windows PyInstaller onedir bundle."""
 
 from __future__ import annotations
 
+import argparse
+import hashlib
+import os
 import shutil
 import subprocess
 import sys
 import urllib.request
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 
-
-def download_file(url: str, dest: Path, desc: str) -> None:
-    """Download file with progress."""
-    print(f"Downloading {desc}...")
-    print(f"  URL: {url}")
-    print(f"  Dest: {dest}")
-
-    def report_hook(block_num: int, block_size: int, total_size: int) -> None:
-        downloaded = block_num * block_size
-        percent = min(downloaded * 100 / total_size, 100) if total_size > 0 else 0
-        sys.stdout.write(f"\r  Progress: {percent:.1f}%")
-        sys.stdout.flush()
-
-    urllib.request.urlretrieve(url, dest, reporthook=report_hook)
-    print()  # New line after progress
+VOSK_MODEL_NAME = "vosk-model-small-ru-0.22"
+VOSK_MODEL_URL = f"https://alphacephei.com/vosk/models/{VOSK_MODEL_NAME}.zip"
 
 
-def setup_ffmpeg(build_dir: Path) -> Path:
-    """Download and extract ffmpeg for Windows."""
-    ffmpeg_dir = build_dir / "ffmpeg"
-    ffmpeg_exe = ffmpeg_dir / "ffmpeg.exe"
-
-    if ffmpeg_exe.exists():
-        print("FFmpeg already exists, skipping download")
-        return ffmpeg_dir
-
-    # Download ffmpeg from gyan.dev (official builds)
-    url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
-    zip_path = build_dir / "ffmpeg.zip"
-
-    download_file(url, zip_path, "FFmpeg")
-
-    print("Extracting FFmpeg...")
-    with zipfile.ZipFile(zip_path, "r") as z:
-        z.extractall(build_dir)
-
-    # Find extracted folder (name varies by version)
-    extracted_dirs = [
-        d for d in build_dir.iterdir() if d.is_dir() and "ffmpeg" in d.name.lower()
-    ]
-    if not extracted_dirs:
-        raise RuntimeError("Could not find extracted ffmpeg directory")
-
-    # Move bin contents to ffmpeg_dir
-    extracted_dir = extracted_dirs[0]
-    bin_dir = extracted_dir / "bin"
-
-    ffmpeg_dir.mkdir(exist_ok=True)
-    for exe in ["ffmpeg.exe", "ffprobe.exe"]:
-        src = bin_dir / exe
-        if src.exists():
-            shutil.copy2(src, ffmpeg_dir / exe)
-            print(f"  Copied: {exe}")
-
-    # Cleanup
-    zip_path.unlink()
-    shutil.rmtree(extracted_dir)
-
-    return ffmpeg_dir
+@dataclass(frozen=True)
+class Asset:
+    name: str
+    url: str
+    sha256: str
+    archive_name: str
 
 
-def setup_vosk_model(build_dir: Path) -> Path:
-    """Download Vosk Russian model."""
-    model_dir = build_dir / "vosk-model-small-ru-0.22"
-
-    if model_dir.exists():
-        print("Vosk model already exists, skipping download")
-        return model_dir
-
-    url = "https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip"
-    zip_path = build_dir / "vosk-model.zip"
-
-    download_file(url, zip_path, "Vosk model")
-
-    print("Extracting Vosk model...")
-    with zipfile.ZipFile(zip_path, "r") as z:
-        z.extractall(build_dir)
-
-    zip_path.unlink()
-    print(f"  Model extracted to: {model_dir}")
-
-    return model_dir
-
-
-def setup_fonts(build_dir: Path) -> Path:
-    """Setup Oswald font."""
-    fonts_dir = build_dir / "assets" / "oswald" / "static"
-
-    if fonts_dir.exists():
-        print("Fonts already exist, skipping setup")
-        return fonts_dir
-
-    fonts_dir.mkdir(parents=True, exist_ok=True)
-
-    # Download Oswald font from Google Fonts GitHub
-    url = "https://github.com/googlefonts/OswaldFont/archive/refs/heads/main.zip"
-    zip_path = build_dir / "oswald.zip"
-
-    download_file(url, zip_path, "Oswald font")
-
-    print("Extracting fonts...")
-    with zipfile.ZipFile(zip_path, "r") as z:
-        z.extractall(build_dir / "oswald_temp")
-
-    # Find and copy font files
-    temp_dir = build_dir / "oswald_temp"
-    font_files = list(temp_dir.rglob("Oswald-Bold.ttf"))
-
-    if font_files:
-        for font_file in font_files:
-            if "static" in str(font_file):
-                shutil.copy2(font_file, fonts_dir / font_file.name)
-                print(f"  Copied: {font_file.name}")
-    else:
-        print("  Warning: Could not find Oswald-Bold.ttf, using fallback")
-        # Create empty file as placeholder
-        (fonts_dir / "Oswald-Bold.ttf").touch()
-
-    # Cleanup
-    zip_path.unlink()
-    shutil.rmtree(temp_dir)
-
-    return fonts_dir
-
-
-def check_pyinstaller() -> bool:
-    """Check if pyinstaller is installed."""
-    try:
-        subprocess.run(
-            [sys.executable, "-m", "PyInstaller", "--version"],
-            capture_output=True,
-            check=True,
+def _asset(name: str, url: str | None, sha256: str | None, archive_name: str) -> Asset:
+    if not url or not sha256:
+        env_name = name.upper().replace(" ", "_")
+        raise SystemExit(
+            f"{name} requires a versioned URL and SHA-256. Set "
+            f"VIDEO_PROCESSOR_{env_name}_URL and VIDEO_PROCESSOR_{env_name}_SHA256 "
+            "or pass the corresponding command-line options."
         )
-        return True
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return False
+    digest = sha256.lower()
+    if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
+        raise SystemExit(f"Invalid SHA-256 for {name}: {sha256!r}")
+    return Asset(name, url, digest, archive_name)
 
 
-def install_pyinstaller() -> None:
-    """Install pyinstaller."""
-    print("Installing PyInstaller...")
-    subprocess.run([sys.executable, "-m", "pip", "install", "pyinstaller"], check=True)
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
-def build_exe(spec_path: Path, dist_dir: Path) -> None:
-    """Run PyInstaller build."""
-    print("\n" + "=" * 60)
-    print("Building executable...")
-    print("=" * 60)
+def _download_verified(asset: Asset, cache_dir: Path) -> Path:
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    destination = cache_dir / asset.archive_name
+    if destination.is_file() and _sha256(destination) == asset.sha256:
+        print(f"Using verified cached {asset.name}: {destination}")
+        return destination
+    destination.unlink(missing_ok=True)
+    temporary = destination.with_suffix(destination.suffix + ".part")
+    temporary.unlink(missing_ok=True)
+    print(f"Downloading {asset.name}: {asset.url}")
+    try:
+        with (
+            urllib.request.urlopen(asset.url, timeout=120) as response,
+            temporary.open("wb") as output,
+        ):
+            shutil.copyfileobj(response, output)
+        actual = _sha256(temporary)
+        if actual != asset.sha256:
+            raise RuntimeError(
+                f"SHA-256 mismatch for {asset.name}: expected {asset.sha256}, got {actual}"
+            )
+        temporary.replace(destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return destination
 
-    cmd = [
+
+def _extract_zip(archive: Path, destination: Path) -> None:
+    destination.mkdir(parents=True, exist_ok=True)
+    root = destination.resolve()
+    with zipfile.ZipFile(archive) as bundle:
+        for member in bundle.infolist():
+            target = (destination / member.filename).resolve()
+            if os.path.commonpath((root, target)) != str(root):
+                raise RuntimeError(f"Unsafe path in {archive}: {member.filename}")
+        bundle.extractall(destination)
+
+
+def _single_file(root: Path, name: str) -> Path:
+    matches = [path for path in root.rglob(name) if path.is_file()]
+    if not matches:
+        raise RuntimeError(f"{name} was not found in the verified archive")
+    return matches[0]
+
+
+def setup_ffmpeg(build_dir: Path, asset: Asset) -> None:
+    archive = _download_verified(asset, build_dir / "downloads")
+    extraction = build_dir / "extract-ffmpeg"
+    shutil.rmtree(extraction, ignore_errors=True)
+    _extract_zip(archive, extraction)
+    destination = build_dir / "ffmpeg"
+    shutil.rmtree(destination, ignore_errors=True)
+    destination.mkdir(parents=True)
+    for name in ("ffmpeg.exe", "ffprobe.exe"):
+        shutil.copy2(_single_file(extraction, name), destination / name)
+    shutil.rmtree(extraction)
+
+
+def setup_oswald(build_dir: Path, asset: Asset) -> None:
+    archive = _download_verified(asset, build_dir / "downloads")
+    extraction = build_dir / "extract-oswald"
+    shutil.rmtree(extraction, ignore_errors=True)
+    _extract_zip(archive, extraction)
+    destination = build_dir / "assets" / "oswald"
+    shutil.rmtree(destination, ignore_errors=True)
+    (destination / "static").mkdir(parents=True)
+    shutil.copy2(_single_file(extraction, "Oswald-Bold.ttf"), destination / "static")
+    shutil.copy2(_single_file(extraction, "OFL.txt"), destination / "OFL.txt")
+    shutil.rmtree(extraction)
+
+
+def setup_model(root: Path, build_dir: Path, url: str | None, sha256: str | None) -> None:
+    if (root / VOSK_MODEL_NAME).is_dir():
+        print(f"Using tracked Vosk model: {root / VOSK_MODEL_NAME}")
+        return
+    asset = _asset("Vosk model", url or VOSK_MODEL_URL, sha256, "vosk-model.zip")
+    archive = _download_verified(asset, build_dir / "downloads")
+    destination = build_dir / VOSK_MODEL_NAME
+    shutil.rmtree(destination, ignore_errors=True)
+    _extract_zip(archive, build_dir)
+    if not destination.is_dir():
+        raise RuntimeError(f"Verified Vosk archive did not contain {VOSK_MODEL_NAME}")
+
+
+def _check_pyinstaller() -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", "PyInstaller", "--version"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise SystemExit("PyInstaller is missing. Run: uv sync --locked --extra windows")
+    major = int(result.stdout.strip().split(".", 1)[0])
+    if major != 6:
+        raise SystemExit(f"PyInstaller 6 is required, found {result.stdout.strip()}")
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--ffmpeg-url", default=os.environ.get("VIDEO_PROCESSOR_FFMPEG_URL"))
+    parser.add_argument("--ffmpeg-sha256", default=os.environ.get("VIDEO_PROCESSOR_FFMPEG_SHA256"))
+    parser.add_argument("--oswald-url", default=os.environ.get("VIDEO_PROCESSOR_OSWALD_URL"))
+    parser.add_argument("--oswald-sha256", default=os.environ.get("VIDEO_PROCESSOR_OSWALD_SHA256"))
+    parser.add_argument("--model-url", default=os.environ.get("VIDEO_PROCESSOR_VOSK_MODEL_URL"))
+    parser.add_argument(
+        "--model-sha256", default=os.environ.get("VIDEO_PROCESSOR_VOSK_MODEL_SHA256")
+    )
+    return parser
+
+
+def main() -> None:
+    args = _parser().parse_args()
+    if sys.platform != "win32":
+        raise SystemExit("Windows bundles must be built on Windows; use the GitHub workflow.")
+
+    root = Path(__file__).resolve().parent
+    build_dir = root / "build_windows"
+    dist_dir = root / "dist_windows"
+    ffmpeg = _asset("FFmpeg", args.ffmpeg_url, args.ffmpeg_sha256, "ffmpeg.zip")
+    oswald = _asset("Oswald", args.oswald_url, args.oswald_sha256, "oswald.zip")
+
+    setup_ffmpeg(build_dir, ffmpeg)
+    setup_oswald(build_dir, oswald)
+    setup_model(root, build_dir, args.model_url, args.model_sha256)
+    _check_pyinstaller()
+
+    command = [
         sys.executable,
         "-m",
         "PyInstaller",
         "--clean",
+        "--noconfirm",
         "--distpath",
         str(dist_dir),
         "--workpath",
-        str(dist_dir / "build"),
-        str(spec_path),
+        str(build_dir / "pyinstaller"),
+        str(root / "VideoProcessor.spec"),
     ]
-
-    print(f"Command: {' '.join(cmd)}")
-    subprocess.run(cmd, check=True)
-
-    print("\n" + "=" * 60)
-    print("Build complete!")
-    print(f"Executable: {dist_dir / 'VideoProcessor' / 'VideoProcessor.exe'}")
-    print("=" * 60)
-
-
-def main() -> None:
-    """Main build process."""
-    print("=" * 60)
-    print("Video Processor - Windows Executable Builder")
-    print("=" * 60)
-
-    # Detect platform
-    if sys.platform == "win32":
-        print("Platform: Windows")
-    else:
-        print(f"Platform: {sys.platform}")
-        print("WARNING: Building Windows exe on non-Windows platform may not work!")
-        print("Consider using GitHub Actions for cross-platform builds.")
-        response = input("Continue anyway? (y/N): ")
-        if response.lower() != "y":
-            print("Aborted.")
-            return
-
-    # Setup directories
-    script_dir = Path(__file__).parent
-    build_dir = script_dir / "build_windows"
-    dist_dir = script_dir / "dist_windows"
-
-    build_dir.mkdir(exist_ok=True)
-    dist_dir.mkdir(exist_ok=True)
-
-    script_path = script_dir / "video_processor" / "__main__.py"
-    if not script_path.exists():
-        print(f"Error: Entry script not found: {script_path}")
-        sys.exit(1)
-
-    # Setup dependencies
-    print("\n" + "-" * 60)
-    print("Step 1: Downloading dependencies...")
-    print("-" * 60)
-
-    setup_ffmpeg(build_dir)
-    setup_vosk_model(build_dir)
-    setup_fonts(build_dir)
-
-    # Check PyInstaller
-    print("\n" + "-" * 60)
-    print("Step 2: Checking PyInstaller...")
-    print("-" * 60)
-
-    if not check_pyinstaller():
-        install_pyinstaller()
-    else:
-        print("PyInstaller already installed")
-
-    # Use the single shared spec file from the repo root.
-    print("\n" + "-" * 60)
-    print("Step 3: Locating PyInstaller spec file...")
-    print("-" * 60)
-
-    spec_path = script_dir / "VideoProcessor.spec"
-    if not spec_path.exists():
-        print(f"Error: spec file not found: {spec_path}")
-        sys.exit(1)
-    print(f"Using: {spec_path}")
-
-    # Build
-    print("\n" + "-" * 60)
-    print("Step 4: Building executable...")
-    print("-" * 60)
-
-    build_exe(spec_path, dist_dir)
-
-    print("\n" + "=" * 60)
-    print("SUCCESS!")
-    print("=" * 60)
-    print("\nYour executable is ready at:")
-    print(f"  {dist_dir / 'VideoProcessor' / 'VideoProcessor.exe'}")
-    print(
-        f"\nYou can zip the folder '{dist_dir / 'VideoProcessor'}' and distribute it."
-    )
-    print("\nThe executable includes:")
-    print("  - FFmpeg (ffmpeg.exe, ffprobe.exe)")
-    print("  - Vosk Russian model")
-    print("  - Oswald font")
-    print("=" * 60)
+    subprocess.run(command, cwd=root, check=True)
+    output = dist_dir / "VideoProcessor"
+    if not (output / "VideoProcessor.exe").is_file():
+        raise RuntimeError(f"PyInstaller did not create the expected onedir output: {output}")
+    print(f"Windows onedir bundle: {output}")
 
 
 if __name__ == "__main__":

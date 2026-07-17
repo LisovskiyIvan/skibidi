@@ -1,89 +1,76 @@
 name: Build Windows Executable
 
 on:
-  workflow_dispatch:  # Запуск только вручную через вкладку Actions
+  workflow_dispatch:
+    inputs:
+      ffmpeg_url:
+        description: Immutable, versioned FFmpeg Windows ZIP URL (or configure WINDOWS_FFMPEG_URL)
+        required: false
+        type: string
+      ffmpeg_sha256:
+        description: FFmpeg ZIP SHA-256 (or configure WINDOWS_FFMPEG_SHA256)
+        required: false
+        type: string
+      oswald_url:
+        description: Immutable, versioned Oswald source ZIP URL (or configure WINDOWS_OSWALD_URL)
+        required: false
+        type: string
+      oswald_sha256:
+        description: Oswald ZIP SHA-256 (or configure WINDOWS_OSWALD_SHA256)
+        required: false
+        type: string
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
 
 jobs:
-  build-windows:
+  build:
     runs-on: windows-latest
-
+    env:
+      VIDEO_PROCESSOR_FFMPEG_URL: ${{ inputs.ffmpeg_url || vars.WINDOWS_FFMPEG_URL }}
+      VIDEO_PROCESSOR_FFMPEG_SHA256: ${{ inputs.ffmpeg_sha256 || vars.WINDOWS_FFMPEG_SHA256 }}
+      VIDEO_PROCESSOR_OSWALD_URL: ${{ inputs.oswald_url || vars.WINDOWS_OSWALD_URL }}
+      VIDEO_PROCESSOR_OSWALD_SHA256: ${{ inputs.oswald_sha256 || vars.WINDOWS_OSWALD_SHA256 }}
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+      - run: uv python install 3.11
+      - run: uv sync --locked --python 3.11 --extra windows
+      - name: Build shared PyInstaller specification
+        run: uv run --frozen python build_windows.py
+      - name: Archive onedir output and write checksum
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist_windows/VideoProcessor" -DestinationPath "VideoProcessor-Windows.zip" -Force
+          $hash = (Get-FileHash "VideoProcessor-Windows.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  VideoProcessor-Windows.zip" | Set-Content "VideoProcessor-Windows.zip.sha256" -Encoding ascii
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VideoProcessor-Windows-${{ github.run_id }}
+          path: |
+            dist_windows/VideoProcessor/
+            VideoProcessor-Windows.zip
+            VideoProcessor-Windows.zip.sha256
+          if-no-files-found: error
+          retention-days: 30
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install pyinstaller vosk
-
-    - name: Download FFmpeg
-      run: |
-        $url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
-        Invoke-WebRequest -Uri $url -OutFile "ffmpeg.zip"
-        Expand-Archive -Path "ffmpeg.zip" -DestinationPath "."
-        $ffmpegDir = Get-ChildItem -Directory -Filter "ffmpeg-*" | Select-Object -First 1
-        New-Item -ItemType Directory -Force -Path "build_windows/ffmpeg"
-        Copy-Item "$($ffmpegDir.FullName)/bin/ffmpeg.exe" "build_windows/ffmpeg/"
-        Copy-Item "$($ffmpegDir.FullName)/bin/ffprobe.exe" "build_windows/ffmpeg/"
-        Remove-Item "ffmpeg.zip" -Force
-        Remove-Item $ffmpegDir.FullName -Recurse -Force
-      shell: pwsh
-
-    - name: Download Vosk Model
-      run: |
-        $url = "https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip"
-        Invoke-WebRequest -Uri $url -OutFile "vosk-model.zip"
-        Expand-Archive -Path "vosk-model.zip" -DestinationPath "build_windows/"
-        Remove-Item "vosk-model.zip" -Force
-      shell: pwsh
-
-    - name: Download Oswald Font
-      run: |
-        $url = "https://github.com/googlefonts/OswaldFont/archive/refs/heads/main.zip"
-        Invoke-WebRequest -Uri $url -OutFile "oswald.zip"
-        Expand-Archive -Path "oswald.zip" -DestinationPath "oswald_temp"
-        New-Item -ItemType Directory -Force -Path "build_windows/assets/oswald/static"
-        $fontFile = Get-ChildItem -Path "oswald_temp" -Recurse -Filter "Oswald-Bold.ttf" | Where-Object { $_.FullName -like "*static*" } | Select-Object -First 1
-        if ($fontFile) {
-          Copy-Item $fontFile.FullName "build_windows/assets/oswald/static/"
-          Write-Host "Copied font: $($fontFile.FullName)"
-        } else {
-          Write-Host "Font not found, creating placeholder"
-          New-Item -ItemType File -Path "build_windows/assets/oswald/static/Oswald-Bold.ttf"
-        }
-        Remove-Item "oswald.zip" -Force
-        Remove-Item "oswald_temp" -Recurse -Force
-      shell: pwsh
-
-    - name: Build executable
-      run: |
-        pyinstaller --clean --distpath ./dist VideoProcessor.spec
-
-    - name: Create distribution archive
-      run: |
-        # Create directory structure for distribution
-        New-Item -ItemType Directory -Force -Path "VideoProcessor"
-        Copy-Item "dist/VideoProcessor.exe" "VideoProcessor/"
-        # Copy additional files if needed
-        Compress-Archive -Path "VideoProcessor" -DestinationPath "VideoProcessor-Windows.zip" -Force
-
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: VideoProcessor-Windows
-        path: |
-          dist/VideoProcessor.exe
-        retention-days: 30
-
-    - name: Upload release asset (on tag)
-      if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v1
-      with:
-        files: VideoProcessor-Windows.zip
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: VideoProcessor-Windows-${{ github.run_id }}
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            VideoProcessor-Windows.zip
+            VideoProcessor-Windows.zip.sha256

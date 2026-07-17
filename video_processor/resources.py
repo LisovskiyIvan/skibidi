@@ -11,13 +11,11 @@ def _user_config_dir() -> Path:
     """Return the per-user config directory for OAuth and other secrets.
 
     Uses ``%APPDATA%/video_processor`` on Windows and ``~/.config/video_processor``
-    elsewhere, creating the directory if needed. This directory is never bundled
-    inside a PyInstaller executable; it lives on the user's machine.
+    elsewhere. The getter is intentionally side-effect free; callers that write
+    resources are responsible for creating the directory.
     """
     base = Path(os.environ.get("APPDATA", os.path.expanduser("~/.config")))
-    d = base / "video_processor"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+    return base / "video_processor"
 
 
 def _is_bundled() -> bool:
@@ -46,9 +44,17 @@ def get_ffprobe_path() -> Path | str:
 
 
 def get_default_model_dir() -> Path:
+    """Return the Vosk model path without depending on the current directory.
+
+    Resolution order is: ``VIDEO_PROCESSOR_MODEL_DIR`` override, bundled
+    resource directory, then the source/install root.
+    """
+    override = os.environ.get("VIDEO_PROCESSOR_MODEL_DIR")
+    if override:
+        return Path(override).expanduser().resolve()
     if _is_bundled():
         return _bundle_root() / "vosk-model-small-ru-0.22"
-    return Path("vosk-model-small-ru-0.22")
+    return _repo_root() / "vosk-model-small-ru-0.22"
 
 
 def get_default_font_dir() -> Path:
@@ -76,3 +82,8 @@ def get_default_credentials_path() -> Path:
 def get_default_token_path() -> Path:
     """Path to the cached OAuth token file."""
     return _user_config_dir() / "token.json"
+
+
+def get_default_upload_ledger_path() -> Path:
+    """Path to the optional ledger of completed YouTube uploads."""
+    return _user_config_dir() / "upload-ledger.json"

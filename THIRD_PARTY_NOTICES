@@ -1,0 +1,35 @@
+THIRD-PARTY NOTICES
+===================
+
+This file applies to third-party material distributed with a Windows onedir
+bundle. The Python wheel does not contain FFmpeg, the Oswald font, or a Vosk
+model.
+
+Oswald
+------
+
+Copyright 2016 The Oswald Project Authors
+(https://github.com/googlefonts/OswaldFont)
+
+Oswald is licensed under the SIL Open Font License, Version 1.1. The verified
+font archive's OFL.txt is copied beside the bundled font at
+assets/oswald/OFL.txt. The license is also available at:
+https://openfontlicense.org/open-font-license-official-text/
+
+FFmpeg
+------
+
+FFmpeg is supplied to Windows builds as an external, checksum-verified binary
+archive. FFmpeg licensing depends on how that particular binary was configured.
+Release builders are responsible for selecting a redistributable build and for
+preserving its license and source-code notices. See:
+https://ffmpeg.org/legal.html
+
+Vosk model
+----------
+
+The Vosk model catalog identifies vosk-model-small-ru-0.22 as Apache License
+2.0:
+https://alphacephei.com/vosk/models
+
+The full license text is distributed in VOSK_MODEL_LICENSE.

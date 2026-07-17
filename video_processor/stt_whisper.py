@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import threading
+import warnings
+from collections.abc import Callable
 from pathlib import Path
+from threading import Event
 from typing import TYPE_CHECKING, Any
 
-from .errors import PipelineError
+from .errors import PipelineError, ProcessCancelledError
 from .transcribe import WordInfo
 
 if TYPE_CHECKING:
@@ -53,7 +56,10 @@ def _preload_cuda_libraries() -> None:
         ("libcudnn.so.9", "nvidia.cudnn"),
     ]
     for soname, pkg in candidates:
-        spec = importlib.util.find_spec(pkg)
+        try:
+            spec = importlib.util.find_spec(pkg)
+        except (ImportError, ModuleNotFoundError):
+            continue
         if spec is None or not spec.submodule_search_locations:
             continue
         lib_dir = os.path.join(spec.submodule_search_locations[0], "lib")
@@ -91,8 +97,6 @@ def _build_whisper_model(
     except (OSError, RuntimeError) as exc:
         if not fallback or device != "cuda":
             raise
-        import warnings
-
         warnings.warn(
             f"CUDA is unavailable ({exc}); falling back to CPU. To enable GPU, "
             "install the CUDA runtime libraries:\n"
@@ -119,9 +123,18 @@ class WhisperEngine:
     transcription bottleneck with FFmpeg rendering.
     """
 
-    def __init__(self, model: Any, language: str | None) -> None:
+    def __init__(
+        self,
+        model: Any,
+        language: str | None,
+        *,
+        device: str | None = None,
+        cpu_model_factory: Callable[[], Any] | None = None,
+    ) -> None:
         self._model = model
         self._language = language
+        self._device = device
+        self._cpu_model_factory = cpu_model_factory
         self._lock = threading.Lock()
 
     @classmethod
@@ -136,31 +149,65 @@ class WhisperEngine:
             from faster_whisper import WhisperModel
         except ImportError as exc:
             raise PipelineError(
-                "faster-whisper is not installed. Install it with: "
-                'pip install -e ".[stt]"'
+                'faster-whisper is not installed. Install it with: pip install -e ".[stt]"'
             ) from exc
 
         device = _detect_device(config.whisper_device)
-        model, device = _build_whisper_model(
-            WhisperModel, config, device, fallback=True
+        model, device = _build_whisper_model(WhisperModel, config, device, fallback=True)
+
+        def cpu_model_factory() -> Any:
+            return _build_whisper_model(WhisperModel, config, "cpu", fallback=False)[0]
+
+        return cls(
+            model,
+            config.language,
+            device=device,
+            cpu_model_factory=cpu_model_factory if device == "cuda" else None,
         )
-        return cls(model, config.language)
+
+    def _run_transcription(self, wav_path: Path, cancel_event: Event | None) -> list[Any]:
+        segments, _info = self._model.transcribe(
+            str(wav_path),
+            language=self._language,
+            word_timestamps=True,
+            vad_filter=True,
+        )
+        # faster-whisper transcription is lazy: CUDA errors often surface here.
+        result: list[Any] = []
+        for segment in segments:
+            if cancel_event is not None and cancel_event.is_set():
+                raise ProcessCancelledError("Speech recognition cancelled")
+            result.append(segment)
+        return result
 
     def transcribe(self, wav_path: Path) -> list[WordInfo]:
+        return self._transcribe(wav_path, None)
+
+    def transcribe_cancellable(self, wav_path: Path, cancel_event: Event) -> list[WordInfo]:
+        return self._transcribe(wav_path, cancel_event)
+
+    def _transcribe(self, wav_path: Path, cancel_event: Event | None) -> list[WordInfo]:
         """Transcribe a WAV file and return word-level timings.
 
         ``word_timestamps=True`` gives per-word start/end which maps directly to
         :class:`WordInfo`.
         """
         with self._lock:
-            segments, _info = self._model.transcribe(
-                str(wav_path),
-                language=self._language,
-                word_timestamps=True,
-                vad_filter=True,
-            )
-            # faster-whisper transcription is lazy: it runs during iteration.
-            segments = list(segments)
+            if cancel_event is not None and cancel_event.is_set():
+                raise ProcessCancelledError("Speech recognition cancelled")
+            try:
+                segments = self._run_transcription(wav_path, cancel_event)
+            except (OSError, RuntimeError) as exc:
+                if self._device != "cuda" or self._cpu_model_factory is None:
+                    raise
+                warnings.warn(
+                    f"CUDA inference failed ({exc}); falling back to CPU.",
+                    stacklevel=2,
+                )
+                self._model = self._cpu_model_factory()
+                self._device = "cpu"
+                self._cpu_model_factory = None
+                segments = self._run_transcription(wav_path, cancel_event)
 
         words: list[WordInfo] = []
         for segment in segments:

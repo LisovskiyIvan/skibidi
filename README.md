@@ -1,355 +1,192 @@
-# Video Processing Pipeline with Vosk
-
-Скрипт для обработки видео: разбивает на сегменты, распознает речь через Vosk, добавляет субтитры и конвертирует в 9:16 формат.
-
-Проект разделён на три **концептуальных слоя** (все модули лежат в одном плоском
-пакете `video_processor/`):
-
-- **core** — чистая бизнес-логика (`config`, `ffmpeg`, `transcribe`, `subtitles`, `pipeline`, `youtube`, `youtube_config`, `youtube_download`, `youtube_download_config`, `resources`, `progress`, `errors`).
-- **cli** — командная строка (`cli`, `__main__`).
-- **ui** — Tkinter GUI (`ui`).
-
-Все три слоя работают поверх одного и того же ядра `core`, а `PipelineConfig`
-(один dataclass) и протокол `ProgressCallback` связывают их между собой.
-
-## Быстрый старт
-
-### Linux / macOS (разработка)
-
-```bash
-# Установка зависимостей
-pip install -e ".[youtube,download,stt]"
-
-# Скачайте модель Vosk
-wget https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip
-unzip vosk-model-small-ru-0.22.zip
-
-# Убедитесь что ffmpeg установлен
-ffmpeg -version
-
-# Запуск (GUI mode)
-python -m video_processor
-
-# Запуск (CLI mode)
-python -m video_processor -i video.mp4 -o ./output
-
-# После установки пакета доступна команда video-processor
-video-processor -i video.mp4 -o ./output
-```
-
-### Windows (exe файл)
-
-1. Скачайте `VideoProcessor-Windows.zip` из [Releases](../../releases)
-2. Распакуйте в любую папку
-3. Запустите `VideoProcessor.exe`
-4. Выберите видео и папку для сохранения через GUI
-
-Или через командную строку:
-```cmd
-VideoProcessor.exe -i "C:\Videos\input.mp4" -o "C:\Output"
-```
-
-## Сборка exe для Windows
-
-### Способ 1: GitHub Actions (рекомендуется)
-
-1. Запушьте код на GitHub
-2. Перейдите во вкладку **Actions**
-3. Выберите **Build Windows Executable**
-4. Нажмите **Run workflow**
-5. Через несколько минут скачайте артефакт `VideoProcessor-Windows.zip`
-
-Или создайте тег для автоматического релиза:
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-### Способ 2: Локальная сборка на Windows
-
-```bash
-# На Windows машине
-python build_windows.py
-```
-
-### Способ 3: Wine на Linux
-
-```bash
-# Установите Wine и Python для Windows
-wine pip install pyinstaller vosk
-python build_windows.py
-```
-
-## Структура проекта
-
-```
-.
-├── video_processor/          # Пакет приложения
-│   ├── __init__.py
-│   ├── __main__.py          # Точка входа: python -m video_processor
-│   ├── cli.py                # CLI
-│   ├── ui.py                 # Tkinter GUI
-│   ├── config.py             # Конфигурация пайплайна (PipelineConfig)
-│   ├── resources.py          # Пути к ресурсам (dev / PyInstaller bundle)
-│   ├── progress.py           # Протокол прогресса (ProgressCallback)
-│   ├── errors.py             # PipelineError
-│   ├── pipeline.py           # Оркестрация пайплайна
-│   ├── ffmpeg.py             # FFmpeg/FFprobe обёртки
-│   ├── transcribe.py         # Vosk + группировка слов
-│   ├── youtube.py            # Загрузка видео на YouTube
-│   ├── youtube_config.py     # Конфигурация загрузки на YouTube
-│   ├── youtube_download.py   # Скачивание видео с YouTube
-│   ├── youtube_download_config.py # Конфигурация скачивания с YouTube
-│   └── subtitles.py          # Генерация ASS
-├── tests/                    # pytest-тесты (чистые функции + пайплайн)
-├── build_windows.py          # Скрипт сборки для Windows
-├── pyproject.toml            # Метаданные, точка входа, конфиги ruff/mypy/pytest
-├── setup.sh                  # Setup Linux/macOS
-├── .github/
-│   └── workflows/
-│       ├── ci.yml            # lint (ruff) + typecheck (mypy) + tests (pytest)
-│       └── build-windows.yml # Сборка Windows exe
-├── assets/
-│   └── oswald/              # Шрифты
-└── vosk-model-small-ru-0.22/ # Модель Vosk
-```
-
-## Разработка
-
-Дев-тулчейн (pytest, mypy, ruff) ставится опциональной группой зависимостей.
-Для загрузки на YouTube нужна отдельная группа `[youtube]`, для скачивания — `[download]`:
-
-```bash
-pip install -e ".[dev,youtube,download]"
-# или только нужные группы:
-# pip install -e ".[dev]"
-# pip install -e ".[dev,youtube]"
-# pip install -e ".[dev,download]"
-
-ruff check .   # линтер
-mypy           # статическая типизация ядра (Tkinter-GUI исключён из-за шума stubs)
-pytest         # unit-тесты на чистые функции и оркестрацию
-```
-
-Все три проверки прогоняются в CI (`.github/workflows/ci.yml`) на каждый push/PR.
-
-## Использование
-
-### GUI режим (по умолчанию)
-
-```bash
-python -m video_processor
-```
-
-Откроется окно с тремя вкладками:
-
-- **Process** — выбор исходного видео, папки для результатов, модели Vosk,
-  настройки сегментации, субтитров (шрифт, размер, позиция) и эффектов.
-- **Upload** — настройки загрузки готовых клипов на YouTube после обработки.
-- **Download** — скачивание видео с YouTube: вставьте URL по одному на строку,
-  при необходимости задайте формат/шаблон yt-dlp и нажмите **Download**.
-  Видео сохраняется в выбранную папку `--output` (по умолчанию `./out`).
-
-Кнопка **Run** и строка прогресса всегда расположены под вкладками.
-
-### CLI режим
-
-```bash
-# Полный CLI
-python -m video_processor -i video.mp4 -o ./results
-
-# Только input
-python -m video_processor -i video.mp4
-
-# Показать help
-python -m video_processor --help
-```
-
-### Программное использование (core)
-
-```python
-from pathlib import Path
-from video_processor.config import PipelineConfig
-from video_processor.pipeline import run_pipeline
-from video_processor.progress import Step
-
-def on_progress(step: Step, current: int, total: int, message: str) -> None:
-    print(f"[{current}/{total}] {step.value}: {message}")
-
-config = PipelineConfig(
-    input=Path("assets/videoplayback.mp4"),
-    output_dir=Path("out"),
-    seg_seconds=60,
-    burn_subs=True,
-)
-run_pipeline(config, on_progress)
-```
-
-## Конфигурация
-
-Основные настройки CLI:
-
-| Аргумент | Описание | По умолчанию |
-|----------|----------|--------------|
-| `-i, --input` | Входное видео | — |
-| `-o, --output` | Папка для результатов | `out` |
-| `-m, --model` | Папка с моделью Vosk | `vosk-model-small-ru-0.22` |
-| `--seg-seconds` | Длительность сегмента | `60` |
-| `--burn-subs` / `--no-burn-subs` | Прожигать субтитры | `True` |
-| `--font` | Название шрифта | `Oswald` |
-| `--font-size` | Размер шрифта | `100` |
-| `--pos-y` | Позиция по Y | `1500` |
-| `--fade-in` | Появление, мс | `200` |
-| `--fade-out` | Исчезновение, мс | `200` |
-| `--mirror` / `--no-mirror` | Зеркальное отражение | `True` |
-| `--speed` | Скорость (`1.0` или `0.95-1.05`) | `0.95-1.05` |
-| `--seed` | Seed для рандомизированных эффектов (напр. `--speed`) | — |
-| `--brightness` | Яркость (FFmpeg eq) | — |
-| `--contrast` | Контраст (FFmpeg eq) | — |
-| `--saturation` | Насыщенность (FFmpeg eq) | — |
-| `--gamma` | Гамма (FFmpeg eq) | — |
-| `--hue` | Оттенок (FFmpeg eq) | — |
-| `--sharpness` | Лёгкая резкость | `False` |
-| `--noise` | Шум (0 = выкл) | `0` |
-| `--overlay-text` | Текстовый оверлей | — |
-| `--bg-audio` | Фоновое аудио | — |
-| `--bg-volume` | Громкость фона | `0.3` |
-| `--upload` | Загрузить итоговые клипы на YouTube после обработки | `False` |
-| `--upload-only` | Загрузить один файл или папку без запуска пайплайна | — |
-| `--download` | Скачать видео с YouTube URL(ов) в `--output` | — |
-| `--dl-format` | yt-dlp format string (default: best mp4) | — |
-| `--dl-template` | yt-dlp output template | — |
-| `--yt-credentials` | Путь к `client_secret.json` OAuth | `~/.config/video_processor/client_secret.json` |
-| `--yt-token` | Путь к кешированному `token.json` | `~/.config/video_processor/token.json` |
-| `--yt-title` | Шаблон названия видео (`{name}`, `{idx}`, `{total}`) | `{name}` |
-| `--yt-description` | Описание видео | — |
-| `--yt-tags` | Теги через запятую | — |
-| `--yt-privacy` | Приватность: `private`, `unlisted`, `public` | `private` |
-| `--yt-category` | ID категории YouTube | `22` |
-| `--yt-notify` | Уведомлять подписчиков | `False` |
-
-### Скачивание с YouTube
-
-Модуль скачивания работает через **yt-dlp** и сохраняет видео в папку из `--output`
-(по умолчанию `./out`). По умолчанию выбирается формат `mp4`, так как остальные
-шаги пайплайна (сегментация, загрузка) ожидают файлы `.mp4`.
-
-1. Установите зависимости для скачивания:
-
-```bash
-pip install -e ".[download]"
-```
-
-2. Скачайте одно или несколько видео:
-
-```bash
-python -m video_processor --download https://www.youtube.com/watch?v=XXX -o ./out
-```
-
-Несколько URL за один запуск:
-
-```bash
-python -m video_processor --download https://youtu.be/ABC https://youtu.be/DEF -o ./out
-```
-
-3. Дополнительные опции yt-dlp:
-
-```bash
-python -m video_processor --download https://youtu.be/XXX \
-  --dl-format "bestvideo[height<=1080]+bestaudio" \
-  --dl-template "%(title)s.%(ext)s" \
-  -o ./downloads
-```
-
-### Загрузка на YouTube
-
-Автоматическая загрузка готовых клипов на YouTube работает через **YouTube Data API v3**
-и OAuth 2.0. После первой авторизации (`client_secret.json`) токен сохраняется в
-`token.json`, и все следующие запуски будут полностью автоматическими.
-
-1. Установите зависимости для загрузки:
-
-```bash
-pip install -e ".[youtube]"
-```
-
-2. Создайте OAuth 2.0 Desktop credentials в [Google Cloud Console](https://console.cloud.google.com/)
-   и скачайте `client_secret.json`.
-
-3. Положите `client_secret.json` в `~/.config/video_processor/` (Linux/macOS) или
-   `%APPDATA%\video_processor\` (Windows).
-
-4. Запустите обработку с загрузкой:
-
-```bash
-python -m video_processor -i video.mp4 -o ./out --upload \
-  --yt-title "Clip {idx:02d}" --yt-privacy private --yt-tags "shorts,automation"
-```
-
-Первый запрос откроет браузер для подтверждения доступа. После этого
-`token.json` кешируется, и браузер больше не нужен.
-
-Загрузить готовый файл без обработки:
-
-```bash
-python -m video_processor --upload-only ./out/final/clip_00_sub.mp4 \
-  --yt-title "My video" --yt-privacy public
-```
-
-### Пример CLI с эффектами
-
-```bash
-python -m video_processor -i video.mp4 -o ./out \
-  --mirror --speed 0.95-1.05 \
-  --brightness 0.05 --contrast 1.05 --noise 5 \
-  --bg-audio music.mp3 --bg-volume 0.3
-```
-
-### Воспроизводимость, resume и прогресс
-
-- **`--seed N`** — фиксирует генератор случайных чисел. Все рандомизированные
-  эффекты (например, случайная скорость из диапазона `0.95-1.05`) становятся
-  детерминированными: повторный запуск на том же входе даёт тот же результат.
-  Без `--seed` используется системная энтропия (поведение по умолчанию).
-- **Resume** — если в `final/` уже лежит готовый клип (`clip_NN_sub.mp4`), сегмент
-  пропускается. Прерванный запуск можно перезапустить без переработки целых
-  сегментов: просто удалите только незавершённые клипы.
-- **Прогресс** — FFmpeg пишет построчный прогресс в stderr; пайплайн парсит
-  `out_time_ms` и сообщает процент выполнения внутри каждого сегмента (с шагом
-  5%, чтобы не засорять вывод в CLI).
-
-## Зависимости
-
-### Для разработки (Linux/macOS)
-
-- Python 3.9+
-- ffmpeg (apt/brew)
-- Модель Vosk (скачать отдельно)
-- Шрифт Oswald (включен в репозиторий)
-
-### Для Windows exe
-
-Все зависимости включены в exe:
-- ffmpeg.exe и ffprobe.exe
-- Модель Vosk Russian
-- Шрифт Oswald
-- Python runtime
+# Video Transcription
+
+Инструмент командной строки и Tkinter GUI для нарезки видео, распознавания речи,
+генерации ASS-субтитров и преобразования клипов в формат 9:16. Основной движок
+распознавания Vosk; faster-whisper, загрузка на YouTube и скачивание через yt-dlp
+подключаются отдельными extras.
+
+## Возможности
+
+- параллельная обработка сегментов через FFmpeg;
+- Vosk по умолчанию и optional faster-whisper (CPU/CUDA);
+- прожиг субтитров, эффекты, фоновое аудио и выбор аппаратного encoder;
+- optional YouTube Data API upload и yt-dlp download;
+- CLI и GUI поверх одного pipeline;
+- безопасная публикация результата через временный `.part` файл;
+- resume только после проверки manifest, fingerprint настроек и видеопотока.
 
 ## Требования
 
-### Linux
+- Python 3.9-3.14;
+- [uv](https://docs.astral.sh/uv/);
+- `ffmpeg` и `ffprobe` в `PATH`;
+- Tkinter из системного Python-пакета для GUI;
+- каталог `vosk-model-small-ru-0.22` для Vosk.
+
+Linux обычно требует `ffmpeg` и `python3-tk`; macOS с Homebrew - `ffmpeg` и
+`python-tk`. Extra `gui` устанавливает optional integrations, показанные в GUI
+(Whisper, upload и download), но Tkinter не распространяется через PyPI и этот
+extra не заменяет системный пакет Tk.
+
+## Установка
+
+Детерминированная установка из `uv.lock`:
+
 ```bash
-sudo apt-get install ffmpeg python3-tk
+uv sync --locked
 ```
 
-### macOS
+Нужные функции включаются явно:
+
 ```bash
-brew install ffmpeg python-tk
+uv sync --locked --extra youtube     # YouTube upload
+uv sync --locked --extra download    # yt-dlp download
+uv sync --locked --extra stt         # faster-whisper
+uv sync --locked --extra stt --extra stt-cuda  # large NVIDIA CUDA runtime
+uv sync --locked --extra gui         # all optional GUI integrations
+uv sync --locked --extra dev         # pytest, ruff, mypy
 ```
 
-### Windows
-Не требуется (все включено в exe).
+Для полной среды разработки на Linux/macOS можно выполнить `./setup.sh`. Скрипт
+проверяет `uv`, FFmpeg, FFprobe и Tkinter, затем синхронизирует locked extras; он
+не вызывает bare `pip` и не скачивает непроверенные assets.
+
+## Запуск
+
+GUI:
+
+```bash
+uv run video-processor
+```
+
+CLI:
+
+```bash
+uv run video-processor -i video.mp4 -o ./out
+uv run python -m video_processor --help
+```
+
+Примеры optional функций:
+
+```bash
+uv run video-processor --download https://youtu.be/VIDEO_ID -o ./downloads
+
+uv run video-processor -i video.mp4 -o ./out --upload \
+  --yt-title "Clip {idx:02d}" --yt-privacy private
+
+uv run video-processor -i video.mp4 -o ./out \
+  --stt-engine whisper --whisper-model small --whisper-device auto
+```
+
+YouTube upload требует OAuth Desktop credentials. По умолчанию credentials и
+token находятся в `~/.config/video_processor/` (Linux/macOS) или
+`%APPDATA%\video_processor\` (Windows). Upload использует private visibility,
+если пользователь явно не выбрал другое значение.
+
+## Resume, отмена и cleanup
+
+- Resume не доверяет одному наличию `final/clip_*.mp4`. Pipeline сверяет версию
+  manifest, fingerprint входа и output-affecting настроек, размер/mtime файла и
+  результат `ffprobe`. Изменение входа или настроек инвалидирует старый resume.
+- Финальный файл заменяется атомарно только после успешного render и `ffprobe`;
+  поврежденный или отмененный `.part` удаляется, а прежний финальный файл
+  сохраняется.
+- GUI cancellation кооперативная. Download/upload останавливаются в своих
+  hooks, а активные FFmpeg/ffprobe процессы получают завершение через общий
+  cancellation event; после короткого grace period зависший процесс убивается.
+- После успешного сегмента WAV и служебный segment-файл удаляются, если
+  `keep_intermediates` выключен. ASS-файлы и готовые клипы сохраняются. Временные
+  каталоги фильтров и `.part` файлы очищаются даже при ошибке.
+- `--seed N` делает рандомизированные эффекты воспроизводимыми.
+
+## Разработка и CI
+
+```bash
+uv sync --locked --extra dev
+uv run ruff format --check .
+uv run ruff check .
+uv run mypy
+uv run pytest
+uv build
+```
+
+CI проверяет форматирование, lint, strict mypy, pytest на Python 3.9-3.14, затем
+строит wheel и устанавливает его в чистое окружение. `video_processor/py.typed`
+публикуется в wheel как PEP 561 marker.
+
+## Windows onedir
+
+Release artifact - это каталог, а не одиночный exe:
+
+```text
+VideoProcessor/
+├── VideoProcessor.exe
+└── _internal/
+    ├── ffmpeg.exe
+    ├── ffprobe.exe
+    ├── vosk-model-small-ru-0.22/ ...
+    └── assets/oswald/ ...
+```
+
+Переносить и распаковывать нужно весь каталог. Workflow публикует
+`VideoProcessor-Windows.zip` и `VideoProcessor-Windows.zip.sha256`, а Actions
+artifact дополнительно содержит исходный onedir-каталог.
+
+### Локальная сборка
+
+`VideoProcessor.spec` использует PyInstaller 6 `EXE(exclude_binaries=True)` и
+`COLLECT`. `build_windows.py` - единственный код подготовки assets для локальной
+сборки и GitHub Actions. Скрипт никогда не создает пустой font fallback.
+
+FFmpeg и Oswald должны задаваться immutable/versioned URL и известным SHA-256:
+
+```powershell
+$env:VIDEO_PROCESSOR_FFMPEG_URL = "https://example.invalid/ffmpeg-VERSION.zip"
+$env:VIDEO_PROCESSOR_FFMPEG_SHA256 = "64-lowercase-hex-characters"
+$env:VIDEO_PROCESSOR_OSWALD_URL = "https://github.com/googlefonts/OswaldFont/archive/COMMIT.zip"
+$env:VIDEO_PROCESSOR_OSWALD_SHA256 = "64-lowercase-hex-characters"
+
+uv sync --locked --extra windows
+uv run --frozen python build_windows.py
+```
+
+Подставьте реальные upstream URL и независимо проверенные hashes; значения в
+примере намеренно не являются рабочим manifest. Архив кешируется только после
+успешной SHA-256 проверки. Tracked Vosk model берется из checkout. Если model
+отсутствует, script также требует `VIDEO_PROCESSOR_VOSK_MODEL_SHA256` и
+опционально принимает `VIDEO_PROCESSOR_VOSK_MODEL_URL`.
+
+Результат: `dist_windows/VideoProcessor/`.
+
+### GitHub Actions
+
+Workflow запускается вручную и на тегах `v*`. Для tag build заранее задайте
+repository variables:
+
+- `WINDOWS_FFMPEG_URL` и `WINDOWS_FFMPEG_SHA256`;
+- `WINDOWS_OSWALD_URL` и `WINDOWS_OSWALD_SHA256`.
+
+При ручном запуске те же значения можно передать workflow inputs. Build job
+имеет только `contents: read`; отдельный tag-only release job получает
+`contents: write`.
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+## Модель Vosk и история Git
+
+Существующие tracked файлы `vosk-model-small-ru-0.22/` намеренно не удаляются.
+Удаление больших blobs из прежних commits не является обычным cleanup: это
+отдельная явная операция переписывания Git history, требующая согласования с
+всеми клонами и force-push. Текущая настройка packaging историю не меняет.
+
+Официальный каталог Vosk указывает для `vosk-model-small-ru-0.22` лицензию
+Apache 2.0. Ее текст распространяется как `VOSK_MODEL_LICENSE`, источник и
+остальные notices перечислены в `THIRD_PARTY_NOTICES`.
 
 ## Лицензия
 
-MIT
+Код проекта распространяется по MIT License, см. `LICENSE`. Third-party
+компоненты имеют собственные условия, см. `THIRD_PARTY_NOTICES`.

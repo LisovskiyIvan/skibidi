@@ -1,16 +1,51 @@
 name: CI
 
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
 
 jobs:
-  check:
+  quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
-          python-version: '3.11'
-      - run: pip install -e ".[dev]"
-      - run: ruff check .
-      - run: mypy
-      - run: pytest
+          enable-cache: true
+      - run: uv python install 3.11
+      - run: uv sync --locked --python 3.11 --extra dev
+      - run: uv run --frozen ruff format --check .
+      - run: uv run --frozen ruff check .
+      - run: uv run --frozen mypy
+
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+      - run: uv python install ${{ matrix.python }}
+      - run: uv sync --locked --python ${{ matrix.python }} --extra dev
+      - run: uv run --frozen --python ${{ matrix.python }} pytest
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+      - run: uv python install 3.11
+      - run: uv sync --locked --python 3.11 --extra build
+      - run: uv build --no-build-isolation --python 3.11
+      - run: uv venv --python 3.11 .wheel-smoke
+      - run: uv pip install --python .wheel-smoke/bin/python dist/*.whl
+      - run: .wheel-smoke/bin/python -c "from importlib.metadata import version; import video_processor; assert version('video-transcription') == video_processor.__version__"

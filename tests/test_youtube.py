@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -9,7 +10,15 @@ from typing import Any
 import pytest
 
 from video_processor.progress import Step
-from video_processor.youtube import YouTubeUploadError, _resolve_title, upload_to_youtube
+from video_processor.youtube import (
+    YouTubeUploadError,
+    _atomic_write_private,
+    _authenticate,
+    _preflight,
+    _resolve_title,
+    _upload_single_video,
+    upload_to_youtube,
+)
 from video_processor.youtube_config import YouTubeUploadConfig
 
 
@@ -52,11 +61,38 @@ class TestUploadToYouTubeValidation:
             upload_to_youtube(cfg)
 
     def test_invalid_privacy_raises(self) -> None:
-        cfg = YouTubeUploadConfig(
-            video_paths=[Path("v.mp4")], privacy_status="secret"
-        )
+        cfg = YouTubeUploadConfig(video_paths=[Path("v.mp4")], privacy_status="secret")
         with pytest.raises(YouTubeUploadError, match="Invalid privacy status"):
             upload_to_youtube(cfg)
+
+    def test_all_files_and_titles_are_checked_before_auth(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        video = tmp_path / "video.mp4"
+        video.write_bytes(b"video")
+        authenticated = False
+
+        def authenticate(config: YouTubeUploadConfig) -> object:
+            nonlocal authenticated
+            authenticated = True
+            return object()
+
+        monkeypatch.setattr("video_processor.youtube._authenticate", authenticate)
+        cfg = YouTubeUploadConfig(
+            video_paths=[video, tmp_path / "missing.mp4"],
+            title="{name}",
+        )
+
+        with pytest.raises(YouTubeUploadError, match="Video file not found"):
+            upload_to_youtube(cfg)
+        assert authenticated is False
+
+        cfg.video_paths = [video]
+        cfg.title = "{unknown}"
+        with pytest.raises(YouTubeUploadError, match="Invalid title template"):
+            upload_to_youtube(cfg)
+        assert authenticated is False
+
 
 class TestUploadOrchestration:
     def test_uploads_all_paths_and_reports_progress(
@@ -115,3 +151,142 @@ class TestUploadOrchestration:
         )
         with pytest.raises(YouTubeUploadError, match="Missing OAuth credentials"):
             upload_to_youtube(cfg)
+
+
+def test_valid_cached_token_does_not_require_credentials_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    token = tmp_path / "token.json"
+    token.write_text("{}", encoding="utf-8")
+
+    class FakeCredential:
+        valid = True
+        expired = False
+        refresh_token = None
+
+    credential = FakeCredential()
+
+    class FakeCredentials:
+        @staticmethod
+        def from_authorized_user_file(path: str, scopes: list[str]) -> object:
+            return credential
+
+    monkeypatch.setattr("video_processor.youtube._ensure_deps", lambda: None)
+    monkeypatch.setattr("video_processor.youtube.Credentials", FakeCredentials)
+    monkeypatch.setattr(
+        "video_processor.youtube.build",
+        lambda service, version, credentials: (service, version, credentials),
+    )
+    cfg = YouTubeUploadConfig(
+        credentials_path=tmp_path / "missing.json",
+        token_path=token,
+    )
+
+    assert _authenticate(cfg) == ("youtube", "v3", credential)
+
+
+def test_private_write_is_atomic_mode_0600_and_rejects_symlink(
+    tmp_path: Path,
+) -> None:
+    token = tmp_path / "token.json"
+    _atomic_write_private(token, "secret", "token")
+    assert token.read_text(encoding="utf-8") == "secret"
+    if os.name == "posix":
+        assert token.stat().st_mode & 0o777 == 0o600
+        target = tmp_path / "target.json"
+        target.write_text("safe", encoding="utf-8")
+        link = tmp_path / "link.json"
+        link.symlink_to(target)
+        with pytest.raises(YouTubeUploadError, match="symlink"):
+            _atomic_write_private(link, "unsafe", "token")
+        assert target.read_text(encoding="utf-8") == "safe"
+
+
+def test_transient_upload_error_is_retried(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"video")
+    attempts = 0
+
+    class TransientError(Exception):
+        resp = type("Response", (), {"status": 503})()
+
+    class Request:
+        def next_chunk(self) -> tuple[None, dict[str, str] | None]:
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise TransientError("unavailable")
+            return None, {"id": "video-id"}
+
+    class Videos:
+        def insert(self, **kwargs: Any) -> Request:
+            return Request()
+
+    class Service:
+        def videos(self) -> Videos:
+            return Videos()
+
+    monkeypatch.setattr("video_processor.youtube._ensure_deps", lambda: None)
+    monkeypatch.setattr("video_processor.youtube.MediaFileUpload", lambda *a, **k: object())
+    monkeypatch.setattr("video_processor.youtube.MediaUploadProgress", object())
+    cfg = YouTubeUploadConfig(
+        video_paths=[video],
+        retry_backoff_seconds=0,
+    )
+
+    assert _upload_single_video(cfg, Service(), video, 1, 1, lambda *_args: None) == "video-id"
+    assert attempts == 2
+
+
+def test_upload_ledger_skips_matching_rerun(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"video")
+    cfg = YouTubeUploadConfig(
+        video_paths=[video],
+        ledger_path=tmp_path / "ledger.json",
+    )
+    monkeypatch.setattr("video_processor.youtube._authenticate", lambda _cfg: object())
+    monkeypatch.setattr(
+        "video_processor.youtube._upload_single_video",
+        lambda *_args: "video-id",
+    )
+    assert upload_to_youtube(cfg) == ["video-id"]
+
+    monkeypatch.setattr(
+        "video_processor.youtube._authenticate",
+        lambda _cfg: pytest.fail("authentication should be skipped"),
+    )
+    assert upload_to_youtube(cfg) == ["video-id"]
+
+
+def test_upload_ledger_key_is_scoped_by_token_and_metadata(tmp_path: Path) -> None:
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"video")
+    first = YouTubeUploadConfig(
+        video_paths=[video],
+        token_path=tmp_path / "first-token.json",
+        description="first",
+    )
+    second = YouTubeUploadConfig(
+        video_paths=[video],
+        token_path=tmp_path / "second-token.json",
+        description="second",
+    )
+
+    assert _preflight(first) != _preflight(second)
+
+    shared_token = tmp_path / "shared-token.json"
+    first.token_path = shared_token
+    second.token_path = shared_token
+    shared_token.write_text(
+        '{"client_id":"client","refresh_token":"account-one"}',
+        encoding="utf-8",
+    )
+    first_key = _preflight(first)
+    shared_token.write_text(
+        '{"client_id":"client","refresh_token":"account-two"}',
+        encoding="utf-8",
+    )
+    assert first_key != _preflight(second)

@@ -5,7 +5,7 @@ from video_processor.progress import Step, default_message
 
 class TestDefaultMessage:
     def test_done_message(self) -> None:
-        assert default_message(Step.DONE, 5, 5, "anything") == "Done. Total segments: 5."
+        assert default_message(Step.DONE, 5, 5, "anything") == "[5/5] done: anything"
 
     def test_step_message_is_one_indexed(self) -> None:
         msg = default_message(Step.BURN, 0, 4, "burning clip_00.mp4")
@@ -20,3 +20,6 @@ class TestDefaultMessage:
         msg = default_message(Step.UPLOAD, 0, 2, "uploading a.mp4 45%")
         assert "upload" in msg
         assert "[1/2]" in msg
+
+    def test_zero_total_is_domain_neutral(self) -> None:
+        assert default_message(Step.DOWNLOAD, 0, 0, "starting") == "download: starting"

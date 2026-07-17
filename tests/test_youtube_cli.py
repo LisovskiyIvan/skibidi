@@ -42,9 +42,7 @@ class TestYouTubeConfigFromArgs:
 
 
 class TestUploadOnlyCli:
-    def test_uploads_single_file(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_uploads_single_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         video = tmp_path / "clip.mp4"
         video.write_bytes(b"\x00")
 
@@ -80,9 +78,7 @@ class TestUploadOnlyCli:
         assert cfg.tags == ["shorts", "video"]
         assert cfg.privacy_status == "public"
 
-    def test_uploads_directory(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_uploads_directory(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         (tmp_path / "a.mp4").write_bytes(b"\x00")
         (tmp_path / "b.mp4").write_bytes(b"\x00")
         (tmp_path / "note.txt").write_text("skip")
@@ -101,6 +97,29 @@ class TestUploadOnlyCli:
         assert len(captured) == 1
         assert [p.name for p in captured[0].video_paths] == ["a.mp4", "b.mp4"]
 
+    def test_uploads_directory_in_numeric_clip_order(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        for name in ("clip_10.mp4", "clip_2.mp4", "clip_1.mp4"):
+            (tmp_path / name).write_bytes(b"\x00")
+        captured: list[YouTubeUploadConfig] = []
+
+        def fake_upload(config: YouTubeUploadConfig, progress: Any = None) -> list[str]:
+            captured.append(config)
+            return ["id"]
+
+        monkeypatch.setattr(
+            "video_processor.cli.upload_to_youtube",
+            fake_upload,
+        )
+
+        assert run_cli(["--upload-only", str(tmp_path)]) == 0
+        assert [path.name for path in captured[0].video_paths] == [
+            "clip_1.mp4",
+            "clip_2.mp4",
+            "clip_10.mp4",
+        ]
+
     def test_no_mp4_files_error(self, tmp_path: Path) -> None:
         returncode = run_cli(["--upload-only", str(tmp_path)])
         assert returncode == 1
@@ -108,4 +127,9 @@ class TestUploadOnlyCli:
     def test_upload_only_rejects_input(self, tmp_path: Path) -> None:
         with pytest.raises(SystemExit) as exc_info:
             run_cli(["--upload-only", str(tmp_path), "-i", str(tmp_path)])
+        assert exc_info.value.code == 2
+
+    def test_upload_only_rejects_pipeline_upload(self, tmp_path: Path) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            run_cli(["--upload-only", str(tmp_path), "--upload"])
         assert exc_info.value.code == 2

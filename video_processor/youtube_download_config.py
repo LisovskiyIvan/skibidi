@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from threading import Event
 
 
 @dataclass
@@ -28,7 +29,11 @@ class YouTubeDownloadConfig:
 
     # yt-dlp output template. Title is truncated to 100 characters to avoid
     # exceeding filesystem path limits on Windows.
-    outtmpl: str = "%(title).100s.%(ext)s"
+    outtmpl: str = "%(title).100s [%(id)s].%(ext)s"
 
     # Replace special characters in filenames with ASCII-safe equivalents.
     restrict_filenames: bool = True
+
+    # Minimum interval for byte-only progress updates when size is unknown.
+    progress_interval_seconds: float = 1.0
+    cancel_event: Event | None = field(default=None, repr=False, compare=False)

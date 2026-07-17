@@ -1,69 +1,34 @@
-#!/bin/bash
-# Setup script for Linux development
+#!/usr/bin/env bash
+set -euo pipefail
 
-set -e
-
-echo "=== Setting up Video Processing Pipeline ==="
-
-# Check if ffmpeg is installed
-if ! command -v ffmpeg &> /dev/null; then
-    echo "❌ ffmpeg not found. Please install it:"
-    echo "   Ubuntu/Debian: sudo apt-get install ffmpeg"
-    echo "   macOS: brew install ffmpeg"
-    exit 1
-fi
-
-if ! command -v ffprobe &> /dev/null; then
-    echo "❌ ffprobe not found. Please install ffmpeg."
-    exit 1
-fi
-
-echo "✓ ffmpeg found: $(ffmpeg -version | head -1)"
-
-# Install Python dependencies
-echo ""
-echo "Installing Python dependencies..."
-pip install -e ".[youtube,download,stt]"
-
-# Download Vosk model if not exists
-MODEL_DIR="vosk-model-small-ru-0.22"
-if [ ! -d "$MODEL_DIR" ]; then
-    echo ""
-    echo "Downloading Vosk Russian model..."
-    wget https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip
-    unzip vosk-model-small-ru-0.22.zip
-    rm vosk-model-small-ru-0.22.zip
-    echo "✓ Model downloaded to $MODEL_DIR/"
-else
-    echo "✓ Vosk model already exists"
-fi
-
-# Setup fonts
-FONT_DIR="assets/oswald/static"
-if [ ! -d "$FONT_DIR" ]; then
-    echo ""
-    echo "Setting up Oswald fonts..."
-    mkdir -p "$FONT_DIR"
-    
-    # Download Oswald from Google Fonts
-    wget -O oswald.zip "https://fonts.google.com/download?family=Oswald"
-    unzip -o oswald.zip -d "$FONT_DIR/.."
-    rm -f oswald.zip
-    
-    # Find and move the bold font if needed
-    if [ -f "$FONT_DIR/../Oswald-Bold.ttf" ]; then
-        mv "$FONT_DIR/../Oswald-Bold.ttf" "$FONT_DIR/"
+for tool in uv ffmpeg ffprobe; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+        printf 'Required tool not found: %s\n' "$tool" >&2
+        printf 'Install uv from https://docs.astral.sh/uv/ and FFmpeg from your OS package manager.\n' >&2
+        exit 1
     fi
-    
-    echo "✓ Fonts setup complete"
-else
-    echo "✓ Fonts already setup"
+done
+
+printf 'uv: %s\n' "$(uv --version)"
+ffmpeg_version="$(ffmpeg -version 2>/dev/null)"
+printf 'ffmpeg: %s\n' "${ffmpeg_version%%$'\n'*}"
+
+uv sync --locked \
+    --extra dev \
+    --extra gui
+
+if ! uv run python -c "import tkinter" >/dev/null 2>&1; then
+    printf 'Tkinter is unavailable. Install your OS Python Tk package for the GUI.\n' >&2
+    exit 1
 fi
 
-echo ""
-echo "=== Setup complete! ==="
-echo ""
-echo "Run the script with:"
-echo "  python -m video_processor              # GUI mode"
-echo "  python -m video_processor -i video.mp4 -o ./out  # CLI mode"
-echo "  video-processor -i video.mp4 -o ./out            # CLI mode (after install)"
+if [[ ! -d vosk-model-small-ru-0.22 ]]; then
+    printf 'Missing tracked Vosk model directory: vosk-model-small-ru-0.22\n' >&2
+    exit 1
+fi
+
+if [[ ! -f assets/oswald/static/Oswald-Bold.ttf ]]; then
+    printf 'Oswald font is absent; subtitles will use the runtime font fallback.\n' >&2
+fi
+
+printf 'Setup complete. Run: uv run video-processor --help\n'

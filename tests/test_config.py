@@ -3,7 +3,10 @@
 from dataclasses import asdict
 from pathlib import Path
 
+import pytest
+
 from video_processor.config import PipelineConfig
+from video_processor.errors import PipelineError
 
 
 def test_defaults() -> None:
@@ -32,3 +35,25 @@ def test_optional_effect_fields_default_none() -> None:
     cfg = PipelineConfig(input=Path("v.mp4"))
     for field in ("brightness", "contrast", "saturation", "gamma", "hue", "overlay_text"):
         assert getattr(cfg, field) is None
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"seg_seconds": 0}, "seg_seconds"),
+        ({"workers": 0}, "workers"),
+        ({"speed": "fast"}, "speed"),
+        ({"speed": "0.1-3.0"}, "speed"),
+        ({"crf": 99}, "crf"),
+        ({"ffmpeg_timeout_sec": 0}, "timeouts"),
+        ({"stt_engine": "unknown"}, "stt_engine"),
+    ],
+)
+def test_validation_rejects_invalid_values(overrides: dict[str, object], message: str) -> None:
+    cfg = PipelineConfig(input=Path("v.mp4"), **overrides)  # type: ignore[arg-type]
+    with pytest.raises(PipelineError, match=message):
+        cfg.validate()
+
+
+def test_validation_accepts_valid_config() -> None:
+    PipelineConfig(input=Path("v.mp4"), speed="0.5-2.0", encoder_threads=2).validate()

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Callable, Protocol
+from typing import Protocol
 
 
 class Step(Enum):
@@ -19,8 +19,7 @@ class Step(Enum):
 class ProgressCallback(Protocol):
     """Protocol for progress callbacks."""
 
-    def __call__(self, step: Step, current: int, total: int, message: str) -> None:
-        ...
+    def __call__(self, step: Step, current: int, total: int, message: str) -> None: ...
 
 
 def noop_progress(step: Step, current: int, total: int, message: str) -> None:
@@ -28,11 +27,9 @@ def noop_progress(step: Step, current: int, total: int, message: str) -> None:
     pass
 
 
-StepFormatter = Callable[[Step, int, int, str], str]
-
-
 def default_message(step: Step, current: int, total: int, message: str) -> str:
-    """Build a human-readable progress message."""
-    if step is Step.DONE:
-        return f"Done. Total segments: {total}."
-    return f"[{current + 1}/{total}] {step.value}: {message}"
+    """Build a domain-neutral, consistently indexed progress message."""
+    if total <= 0:
+        return f"{step.value}: {message}"
+    position = total if step is Step.DONE else min(max(current + 1, 1), total)
+    return f"[{position}/{total}] {step.value}: {message}"

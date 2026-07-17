@@ -10,6 +10,7 @@ engine-agnostic and lives here.
 from __future__ import annotations
 
 from pathlib import Path
+from threading import Event
 from typing import TYPE_CHECKING, Protocol, TypedDict, runtime_checkable
 
 if TYPE_CHECKING:
@@ -67,6 +68,21 @@ def transcribe_to_cues(engine: SpeechToText, wav_path: Path) -> list[Cue]:
     return group_words_into_cues(words)
 
 
+def transcribe_to_cues_cancellable(
+    engine: SpeechToText,
+    wav_path: Path,
+    cancel_event: Event,
+) -> list[Cue]:
+    """Transcribe with cancellation when supported by the selected adapter."""
+    cancellable = getattr(engine, "transcribe_cancellable", None)
+    words = (
+        cancellable(wav_path, cancel_event)
+        if callable(cancellable)
+        else engine.transcribe(wav_path)
+    )
+    return group_words_into_cues(words)
+
+
 def create_stt_engine(config: PipelineConfig) -> SpeechToText:
     """Create the speech-to-text engine selected by ``config.stt_engine``.
 
@@ -84,6 +100,4 @@ def create_stt_engine(config: PipelineConfig) -> SpeechToText:
         from .stt_whisper import WhisperEngine
 
         return WhisperEngine.from_config(config)
-    raise PipelineError(
-        f"Unknown STT engine: {config.stt_engine!r}. Use 'vosk' or 'whisper'."
-    )
+    raise PipelineError(f"Unknown STT engine: {config.stt_engine!r}. Use 'vosk' or 'whisper'.")

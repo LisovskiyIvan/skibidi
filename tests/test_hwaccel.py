@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
-from typing import Any
 from unittest.mock import patch
 
 import pytest
 
 import video_processor.hwaccel as hwaccel
+from video_processor.errors import PipelineError
 from video_processor.hwaccel import (
     encoder_args,
+    resolve_acceleration,
     resolve_encoder,
     resolve_hwaccel,
 )
+from video_processor.runtime import ProcessResult
 
 
 @pytest.fixture(autouse=True)
@@ -33,31 +35,31 @@ class TestResolveEncoder:
             " V....D h264_nvenc           NVIDIA NVENC H.264 encoder\n"
         )
         with patch(
-            "video_processor.hwaccel.subprocess.run",
-            return_value=_mock_proc(stdout),
+            "video_processor.hwaccel.run_process",
+            return_value=ProcessResult(stdout, ""),
         ):
             assert resolve_encoder("ffmpeg", "auto") == "h264_nvenc"
 
     def test_auto_falls_back_to_libx264(self) -> None:
         stdout = "Encoders:\n V..... libx264              libx264 H.264 / AVC\n"
         with patch(
-            "video_processor.hwaccel.subprocess.run",
-            return_value=_mock_proc(stdout),
+            "video_processor.hwaccel.run_process",
+            return_value=ProcessResult(stdout, ""),
         ):
             assert resolve_encoder("ffmpeg", "auto") == "libx264"
 
     def test_auto_falls_back_when_ffmpeg_fails(self) -> None:
         with patch(
-            "video_processor.hwaccel.subprocess.run",
-            return_value=_mock_proc("", returncode=1),
+            "video_processor.hwaccel.run_process",
+            side_effect=PipelineError("failed"),
         ):
             assert resolve_encoder("ffmpeg", "auto") == "libx264"
 
     def test_caches_encoder_result(self) -> None:
         stdout = "Encoders:\n V....D h264_nvenc           H.264\n"
         with patch(
-            "video_processor.hwaccel.subprocess.run",
-            return_value=_mock_proc(stdout),
+            "video_processor.hwaccel.run_process",
+            return_value=ProcessResult(stdout, ""),
         ) as mock_run:
             assert resolve_encoder("ffmpeg", "auto") == "h264_nvenc"
             assert resolve_encoder("ffmpeg", "auto") == "h264_nvenc"
@@ -76,8 +78,8 @@ class TestResolveHwaccel:
     def test_auto_maps_to_detected_encoder(self) -> None:
         stdout = "Encoders:\n V....D h264_qsv             Intel QSV H.264\n"
         with patch(
-            "video_processor.hwaccel.subprocess.run",
-            return_value=_mock_proc(stdout),
+            "video_processor.hwaccel.run_process",
+            return_value=ProcessResult(stdout, ""),
         ):
             assert resolve_hwaccel("ffmpeg", "auto") == "qsv"
 
@@ -88,8 +90,12 @@ class TestEncoderArgs:
         assert "-crf" in args
         assert "23" in args
         assert "-threads" in args
-        assert "0" in args
+        assert "1" in args
         assert "veryfast" in args
+
+    def test_libx264_uses_explicit_thread_budget(self) -> None:
+        args = encoder_args("libx264", None, 23, threads=4)
+        assert args[args.index("-threads") + 1] == "4"
 
     def test_libx264_preset_override(self) -> None:
         args = encoder_args("libx264", "ultrafast", 23)
@@ -107,11 +113,26 @@ class TestEncoderArgs:
         assert "23" in args
 
 
-def _mock_proc(stdout: str, returncode: int = 0) -> Any:
-    class _Proc:
-        def __init__(self) -> None:
-            self.stdout = stdout
-            self.stderr = ""
-            self.returncode = returncode
+class TestResolveAcceleration:
+    def test_explicit_software_disables_auto_hwaccel(self) -> None:
+        selection = resolve_acceleration("ffmpeg", "libx264", "auto")
+        assert selection.encoder == "libx264"
+        assert selection.hwaccel is None
+        assert selection.auto_hardware is False
 
-    return _Proc()
+    def test_explicit_hardware_gets_matching_auto_hwaccel(self) -> None:
+        selection = resolve_acceleration("ffmpeg", "h264_nvenc", "auto")
+        assert selection.encoder == "h264_nvenc"
+        assert selection.hwaccel == "cuda"
+
+    def test_auto_selection_is_coherent(self) -> None:
+        stdout = "Encoders:\n V....D h264_qsv             Intel QSV H.264\n"
+        with patch(
+            "video_processor.hwaccel.run_process",
+            return_value=ProcessResult(stdout, ""),
+        ):
+            selection = resolve_acceleration("ffmpeg", "auto", "auto")
+
+        assert selection.encoder == "h264_qsv"
+        assert selection.hwaccel == "qsv"
+        assert selection.auto_hardware is True

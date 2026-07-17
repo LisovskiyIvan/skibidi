@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from .config import PipelineConfig
+from .constants import OUTPUT_CENTER_X, OUTPUT_HEIGHT, OUTPUT_WIDTH
 
 if TYPE_CHECKING:
     from .transcribe import Cue
@@ -33,8 +34,8 @@ def build_ass_header(config: PipelineConfig) -> list[str]:
         "[Script Info]",
         "Title: Auto-generated subtitles",
         "ScriptType: v4.00+",
-        "PlayResX: 1080",
-        "PlayResY: 1920",
+        f"PlayResX: {OUTPUT_WIDTH}",
+        f"PlayResY: {OUTPUT_HEIGHT}",
         "",
         "[V4+ Styles]",
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
@@ -52,10 +53,11 @@ def generate_ass(config: PipelineConfig, cues: list[Cue]) -> str:
         start = ass_time(cue["start"])
         end = ass_time(cue["end"])
         text = _escape_ass_text(cue["text"])
-        # Center horizontally at x=540, vertically at the configured Y position.
+        # Center horizontally and use the configured vertical position.
         lines.append(
             f"Dialogue: 0,{start},{end},Default,,0,0,0,,"
-            f"{{\\pos(540,{config.subtitle_pos_y})\\fad({config.fade_in_ms},{config.fade_out_ms})}}"
+            f"{{\\pos({OUTPUT_CENTER_X},{config.subtitle_pos_y})"
+            f"\\fad({config.fade_in_ms},{config.fade_out_ms})}}"
             f"{text}"
         )
     return "\n".join(lines) + "\n"
