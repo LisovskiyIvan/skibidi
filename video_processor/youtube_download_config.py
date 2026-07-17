@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 
 @dataclass
@@ -33,13 +32,3 @@ class YouTubeDownloadConfig:
 
     # Replace special characters in filenames with ASCII-safe equivalents.
     restrict_filenames: bool = True
-
-    def as_dict(self) -> dict[str, Any]:
-        """Serialize config to a JSON-safe dictionary."""
-        return {
-            "urls": self.urls,
-            "output_dir": str(self.output_dir),
-            "format": self.format,
-            "outtmpl": self.outtmpl,
-            "restrict_filenames": self.restrict_filenames,
-        }

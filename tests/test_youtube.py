@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -35,8 +36,8 @@ class TestYouTubeUploadConfig:
             tags=["tag1", "tag2"],
             privacy_status="public",
         )
-        d = cfg.as_dict()
-        assert d["video_paths"] == ["a.mp4", "b.mp4"]
+        d = asdict(cfg)
+        assert d["video_paths"] == [Path("a.mp4"), Path("b.mp4")]
         assert d["title"] == "Test {idx}"
         assert d["description"] == "desc"
         assert d["tags"] == ["tag1", "tag2"]

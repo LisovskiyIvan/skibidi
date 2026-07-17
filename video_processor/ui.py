@@ -18,6 +18,7 @@ except ImportError:
     ttk = None  # type: ignore[assignment]
 
 from .config import PipelineConfig
+from .paths import collect_upload_paths
 from .pipeline import run_pipeline
 from .progress import Step
 from .resources import (
@@ -537,12 +538,7 @@ if TKINTER_AVAILABLE:
                 try:
                     run_pipeline(config, self._progress)
                     if should_upload:
-                        final_dir = config.output_dir / "final"
-                        if config.burn_subs:
-                            upload_paths = sorted(final_dir.glob("clip_*_sub.mp4"))
-                        else:
-                            all_clips = sorted(final_dir.glob("clip_*.mp4"))
-                            upload_paths = [p for p in all_clips if not p.name.endswith("_sub.mp4")]
+                        upload_paths = collect_upload_paths(config)
                         if not upload_paths:
                             raise RuntimeError("No final clips found to upload.")
                         yt_config = self._make_yt_config(upload_paths)

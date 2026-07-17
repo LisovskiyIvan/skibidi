@@ -1,5 +1,6 @@
 """Tests for PipelineConfig defaults and serialization."""
 
+from dataclasses import asdict
 from pathlib import Path
 
 from video_processor.config import PipelineConfig
@@ -18,8 +19,8 @@ def test_defaults() -> None:
 
 def test_as_dict_round_trip_keys() -> None:
     cfg = PipelineConfig(input=Path("v.mp4"), seed=7, brightness=0.1)
-    d = cfg.as_dict()
-    assert d["input"] == "v.mp4"
+    d = asdict(cfg)
+    assert d["input"] == Path("v.mp4")
     assert d["seed"] == 7
     assert d["brightness"] == 0.1
     assert "ffmpeg" in d and "ffprobe" in d

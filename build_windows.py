@@ -155,82 +155,6 @@ def install_pyinstaller() -> None:
     subprocess.run([sys.executable, "-m", "pip", "install", "pyinstaller"], check=True)
 
 
-def create_spec_file(
-    build_dir: Path,
-    script_path: Path,
-    ffmpeg_dir: Path,
-    model_dir: Path,
-    fonts_dir: Path,
-) -> Path:
-    """Create PyInstaller spec file."""
-
-    spec_content = f"""# -*- mode: python ; coding: utf-8 -*-
-
-import sys
-sys.setrecursionlimit(5000)
-
-block_cipher = None
-
-# Data files to include
-added_files = [
-    # FFmpeg binaries
-    ('{ffmpeg_dir.as_posix()}/ffmpeg.exe', '.'),
-    ('{ffmpeg_dir.as_posix()}/ffprobe.exe', '.'),
-
-    # Vosk model
-    ('{model_dir.as_posix()}', 'vosk-model-small-ru-0.22'),
-
-    # Fonts
-    ('{fonts_dir.as_posix()}', 'assets/oswald/static'),
-]
-
-a = Analysis(
-    ['{script_path.as_posix()}'],
-    pathex=[],
-    binaries=[],
-    datas=added_files,
-    hiddenimports=['vosk', 'tkinter', 'video_processor', 'video_processor.ui', 'video_processor.resources', 'video_processor.youtube', 'video_processor.youtube_config', 'googleapiclient', 'google_auth_oauthlib', 'google.auth.transport.requests', 'google.oauth2.credentials'],
-    hookspath=[],
-    hooksconfig={{}},
-    runtime_hooks=[],
-    excludes=[],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
-    noarchive=False,
-)
-
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
-
-exe = EXE(
-    pyz,
-    a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    [],
-    name='VideoProcessor',
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
-    console=True,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-    icon=None,
-)
-"""
-
-    spec_path = build_dir / "VideoProcessor.spec"
-    spec_path.write_text(spec_content, encoding="utf-8")
-    return spec_path
-
-
 def build_exe(spec_path: Path, dist_dir: Path) -> None:
     """Run PyInstaller build."""
     print("\n" + "=" * 60)
@@ -294,9 +218,9 @@ def main() -> None:
     print("Step 1: Downloading dependencies...")
     print("-" * 60)
 
-    ffmpeg_dir = setup_ffmpeg(build_dir)
-    model_dir = setup_vosk_model(build_dir)
-    fonts_dir = setup_fonts(build_dir)
+    setup_ffmpeg(build_dir)
+    setup_vosk_model(build_dir)
+    setup_fonts(build_dir)
 
     # Check PyInstaller
     print("\n" + "-" * 60)
@@ -308,15 +232,16 @@ def main() -> None:
     else:
         print("PyInstaller already installed")
 
-    # Create spec file
+    # Use the single shared spec file from the repo root.
     print("\n" + "-" * 60)
-    print("Step 3: Creating spec file...")
+    print("Step 3: Locating PyInstaller spec file...")
     print("-" * 60)
 
-    spec_path = create_spec_file(
-        build_dir, script_path, ffmpeg_dir, model_dir, fonts_dir
-    )
-    print(f"Created: {spec_path}")
+    spec_path = script_dir / "VideoProcessor.spec"
+    if not spec_path.exists():
+        print(f"Error: spec file not found: {spec_path}")
+        sys.exit(1)
+    print(f"Using: {spec_path}")
 
     # Build
     print("\n" + "-" * 60)

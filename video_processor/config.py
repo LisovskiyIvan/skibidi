@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 from .resources import (
     get_default_font_name,
@@ -76,43 +75,3 @@ class PipelineConfig:
 
     ffmpeg: Path | str = field(default_factory=get_ffmpeg_path)
     ffprobe: Path | str = field(default_factory=get_ffprobe_path)
-
-    def as_dict(self) -> dict[str, Any]:
-        return {
-            "input": str(self.input),
-            "output_dir": str(self.output_dir),
-            "model_dir": str(self.model_dir),
-            "seg_seconds": self.seg_seconds,
-            "stt_engine": self.stt_engine,
-            "language": self.language,
-            "whisper_model": self.whisper_model,
-            "whisper_device": self.whisper_device,
-            "whisper_compute_type": self.whisper_compute_type,
-            "burn_subs": self.burn_subs,
-            "subtitle_font": self.subtitle_font,
-            "subtitle_font_path": str(self.subtitle_font_path) if self.subtitle_font_path else None,
-            "subtitle_fontsize": self.subtitle_fontsize,
-            "subtitle_pos_y": self.subtitle_pos_y,
-            "fade_in_ms": self.fade_in_ms,
-            "fade_out_ms": self.fade_out_ms,
-            "mirror": self.mirror,
-            "speed": self.speed,
-            "seed": self.seed,
-            "brightness": self.brightness,
-            "contrast": self.contrast,
-            "saturation": self.saturation,
-            "gamma": self.gamma,
-            "hue": self.hue,
-            "sharpness": self.sharpness,
-            "noise": self.noise,
-            "overlay_text": self.overlay_text,
-            "background_audio": str(self.background_audio) if self.background_audio else None,
-            "background_audio_volume": self.background_audio_volume,
-            "hwaccel": self.hwaccel,
-            "video_encoder": self.video_encoder,
-            "encoder_preset": self.encoder_preset,
-            "crf": self.crf,
-            "workers": self.workers,
-            "ffmpeg": str(self.ffmpeg),
-            "ffprobe": str(self.ffprobe),
-        }

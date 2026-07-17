@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -24,9 +25,9 @@ class TestYouTubeDownloadConfig:
             outtmpl="%(title)s.%(ext)s",
             restrict_filenames=False,
         )
-        d = cfg.as_dict()
+        d = asdict(cfg)
         assert d["urls"] == ["https://youtu.be/abc"]
-        assert d["output_dir"] == "downloads"
+        assert d["output_dir"] == Path("downloads")
         assert d["format"] == "best"
         assert d["outtmpl"] == "%(title)s.%(ext)s"
         assert d["restrict_filenames"] is False

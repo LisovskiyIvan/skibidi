@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 from .resources import get_default_credentials_path, get_default_token_path
 
@@ -43,19 +42,3 @@ class YouTubeUploadConfig:
     scopes: list[str] = field(
         default_factory=lambda: ["https://www.googleapis.com/auth/youtube.upload"]
     )
-
-    def as_dict(self) -> dict[str, Any]:
-        """Serialize config to a JSON-safe dictionary."""
-        return {
-            "video_paths": [str(p) for p in self.video_paths],
-            "credentials_path": str(self.credentials_path),
-            "token_path": str(self.token_path),
-            "title": self.title,
-            "description": self.description,
-            "tags": self.tags,
-            "category_id": self.category_id,
-            "privacy_status": self.privacy_status,
-            "notify_subscribers": self.notify_subscribers,
-            "chunksize": self.chunksize,
-            "scopes": self.scopes,
-        }

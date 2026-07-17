@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from ._optional_deps import ensure_optional_dep
 from .errors import PipelineError
 from .progress import ProgressCallback, Step, noop_progress
 from .youtube_config import YouTubeUploadConfig
@@ -66,11 +67,11 @@ class YouTubeUploadError(PipelineError):
 
 
 def _ensure_deps() -> None:
-    if not YOUTUBE_AVAILABLE:
-        raise YouTubeUploadError(
-            "YouTube upload dependencies are not installed. "
-            "Install them with: pip install -e '.[youtube]'"
-        )
+    ensure_optional_dep(
+        YOUTUBE_AVAILABLE,
+        "YouTube upload dependencies",
+        "pip install -e '.[youtube]'",
+    )
 
 
 def _resolve_title(template: str, video_path: Path, idx: int, total: int) -> str:

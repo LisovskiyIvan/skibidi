@@ -190,9 +190,8 @@ def _build_video_filter(config: PipelineConfig, ass_path: Path | None, speed: fl
         # Basic escaping for single quotes in drawtext
         text = config.overlay_text.replace("'", "\\'")
         filters.append(
-            "drawtext=text='"
-            f"{text}"
-            ":x=(w-text_w)/2:y=h-text_h-50:fontsize=24:fontcolor=white"
+            f"drawtext=text='{text}':x=(w-text_w)/2:y=h-text_h-50"
+            f":fontsize=24:fontcolor=white"
         )
 
     if speed != 1.0:

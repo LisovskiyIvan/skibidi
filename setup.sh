@@ -23,7 +23,7 @@ echo "✓ ffmpeg found: $(ffmpeg -version | head -1)"
 # Install Python dependencies
 echo ""
 echo "Installing Python dependencies..."
-pip install -r requirements.txt
+pip install -e ".[youtube,download,stt]"
 
 # Download Vosk model if not exists
 MODEL_DIR="vosk-model-small-ru-0.22"

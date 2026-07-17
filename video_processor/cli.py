@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Callable
 from pathlib import Path
+from typing import TypeVar, overload
 
 from .config import PipelineConfig, _default_workers
 from .errors import PipelineError
+from .paths import collect_upload_paths
 from .pipeline import run_pipeline
 from .progress import ProgressCallback, Step, default_message
 from .resources import (
@@ -409,20 +412,6 @@ def youtube_download_config_from_args(
     return cfg
 
 
-def _collect_upload_paths(pipeline_config: PipelineConfig) -> list[Path]:
-    """Collect rendered final clips from the pipeline output directory."""
-    final_dir = pipeline_config.output_dir / "final"
-    if not final_dir.exists():
-        return []
-    # Prefer subtitled files; fall back to plain clips if subtitles are disabled.
-    if pipeline_config.burn_subs:
-        clips = sorted(final_dir.glob("clip_*_sub.mp4"))
-    else:
-        clips = sorted(final_dir.glob("clip_*.mp4"))
-        clips = [p for p in clips if not p.name.endswith("_sub.mp4")]
-    return clips
-
-
 def _do_upload(
     config: YouTubeUploadConfig,
     progress: ProgressCallback,
@@ -447,6 +436,34 @@ def _do_download(
     return paths
 
 
+T = TypeVar("T")
+
+
+@overload
+def _run_or_report(action: Callable[[], None]) -> None | int: ...
+
+
+@overload
+def _run_or_report(action: Callable[[], T]) -> T | int: ...
+
+
+def _run_or_report(action: Callable[[], object]) -> object:
+    """Run ``action`` and return its result, or print an error and return 1.
+
+    Expected failures raise :class:`PipelineError` and are reported concisely;
+    any other exception is reported as an unexpected error. Both cases yield
+    the CLI exit code ``1``.
+    """
+    try:
+        return action()
+    except PipelineError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    except Exception as exc:  # noqa: BLE001
+        print(f"Unexpected error: {exc}", file=sys.stderr)
+        return 1
+
+
 def run_cli(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -457,15 +474,10 @@ def run_cli(argv: list[str] | None = None) -> int:
         if args.upload_only:
             parser.error("--download cannot be combined with --upload-only")
         dl_config = youtube_download_config_from_args(args)
-        try:
-            _do_download(dl_config, _create_progress_callback())
-        except PipelineError as exc:
-            print(f"Error: {exc}", file=sys.stderr)
-            return 1
-        except Exception as exc:  # noqa: BLE001
-            print(f"Unexpected error: {exc}", file=sys.stderr)
-            return 1
-        return 0
+        download_result: list[Path] | int = _run_or_report(
+            lambda: _do_download(dl_config, _create_progress_callback())
+        )
+        return 0 if isinstance(download_result, list) else download_result
 
     if args.upload_only:
         if args.input:
@@ -479,39 +491,31 @@ def run_cli(argv: list[str] | None = None) -> int:
             print("Error: no .mp4 files found for upload.", file=sys.stderr)
             return 1
         yt_config = youtube_config_from_args(args, video_paths)
-        try:
-            _do_upload(yt_config, _create_progress_callback())
-        except PipelineError as exc:
-            print(f"Error: {exc}", file=sys.stderr)
-            return 1
-        except Exception as exc:  # noqa: BLE001
-            print(f"Unexpected error: {exc}", file=sys.stderr)
-            return 1
-        return 0
+        upload_result: list[str] | int = _run_or_report(
+            lambda: _do_upload(yt_config, _create_progress_callback())
+        )
+        return 0 if isinstance(upload_result, list) else upload_result
 
     if not args.input:
         parser.error("the following arguments are required: -i/--input")
 
     config = config_from_args(args)
-    try:
+
+    def _run_pipeline_and_maybe_upload() -> None:
         run_pipeline(config, _create_progress_callback())
         if args.upload:
-            upload_paths = _collect_upload_paths(config)
+            upload_paths = collect_upload_paths(config)
             if not upload_paths:
                 print(
                     "Warning: --upload requested but no final clips were found.",
                     file=sys.stderr,
                 )
-                return 0
+                return
             yt_config = youtube_config_from_args(args, upload_paths)
             _do_upload(yt_config, _create_progress_callback())
-    except PipelineError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        return 1
-    except Exception as exc:  # noqa: BLE001
-        print(f"Unexpected error: {exc}", file=sys.stderr)
-        return 1
-    return 0
+
+    pipeline_result: None | int = _run_or_report(_run_pipeline_and_maybe_upload)
+    return 0 if pipeline_result is None else pipeline_result
 
 
 def main() -> int:

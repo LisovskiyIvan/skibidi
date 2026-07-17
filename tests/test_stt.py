@@ -20,7 +20,6 @@ def _cfg(**overrides: Any) -> PipelineConfig:
     base.update(overrides)
     return PipelineConfig(**base)
 
-
 class TestCreateEngine:
     def test_unknown_engine_raises(self) -> None:
         with pytest.raises(PipelineError, match="Unknown STT engine"):

@@ -18,7 +18,7 @@
 
 ```bash
 # Установка зависимостей
-pip install -r requirements.txt
+pip install -e ".[youtube,download,stt]"
 
 # Скачайте модель Vosk
 wget https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip
@@ -103,7 +103,6 @@ python build_windows.py
 │   └── subtitles.py          # Генерация ASS
 ├── tests/                    # pytest-тесты (чистые функции + пайплайн)
 ├── build_windows.py          # Скрипт сборки для Windows
-├── requirements.txt          # Python зависимости (runtime)
 ├── pyproject.toml            # Метаданные, точка входа, конфиги ruff/mypy/pytest
 ├── setup.sh                  # Setup Linux/macOS
 ├── .github/

@@ -11,6 +11,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from ._optional_deps import ensure_optional_dep
 from .errors import PipelineError
 from .progress import ProgressCallback, Step, noop_progress
 from .youtube_download_config import YouTubeDownloadConfig
@@ -46,11 +47,11 @@ class YouTubeDownloadError(PipelineError):
 
 
 def _ensure_deps() -> None:
-    if not YOUTUBE_DOWNLOAD_AVAILABLE:
-        raise YouTubeDownloadError(
-            "YouTube download dependencies are not installed. "
-            "Install them with: pip install -e '.[download]'"
-        )
+    ensure_optional_dep(
+        YOUTUBE_DOWNLOAD_AVAILABLE,
+        "YouTube download dependencies",
+        "pip install -e '.[download]'",
+    )
 
 
 def _make_progress_hook(
